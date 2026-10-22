@@ -1,0 +1,8 @@
+* text=auto eol=lf
+*.cmd text eol=crlf
+*.parquet binary
+*.pptx binary
+*.png binary
+*.jpg binary
+*.ico binary
+THIRD_PARTY_NOTICES.txt -text -whitespace

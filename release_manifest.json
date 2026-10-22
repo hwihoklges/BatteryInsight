@@ -1,0 +1,14 @@
+{
+  "BatteryInsight.exe": {
+    "bytes": 105449495,
+    "sha256": "aea847f19a83f44ba87a48fc941fdfb8d5d80c36a8346c474e561214fa8a9e3e"
+  },
+  "BatteryInsight_Integrated_Windows_x64.zip": {
+    "bytes": 111024224,
+    "sha256": "5d0fd94c1b460f2f185f9b51a03b8018729b8d79be39f68ecc0f9e02d9ca7705"
+  },
+  "battery_insight.zip": {
+    "bytes": 6261316,
+    "sha256": "3cb72f17d080127ccbf2f309aa33767277f175da3e4a91b544417702bef7fe5f"
+  }
+}

@@ -1,0 +1,556 @@
+{
+  "status": "passed",
+  "scope": "offline workbench + actual localhost API + final targeted regressions + final responsive screenshots",
+  "total_checks": 79,
+  "checks": [
+    {
+      "name": "offline initializes 12 graph nodes",
+      "passed": true,
+      "detail": "",
+      "source": "workbench_qa_result.json"
+    },
+    {
+      "name": "offline status explicit",
+      "passed": true,
+      "detail": null,
+      "source": "workbench_qa_result.json"
+    },
+    {
+      "name": "panel 두 기준 차이 찾기",
+      "passed": true,
+      "detail": "두 기준 차이 찾기",
+      "source": "workbench_qa_result.json"
+    },
+    {
+      "name": "panel 곡선·raw 근거",
+      "passed": true,
+      "detail": "곡선·raw 근거",
+      "source": "workbench_qa_result.json"
+    },
+    {
+      "name": "panel 통제 조건 비교",
+      "passed": true,
+      "detail": "통제 조건 비교",
+      "source": "workbench_qa_result.json"
+    },
+    {
+      "name": "panel 실험 등록",
+      "passed": true,
+      "detail": "실험 등록",
+      "source": "workbench_qa_result.json"
+    },
+    {
+      "name": "panel 수명 구간 변화",
+      "passed": true,
+      "detail": "수명 구간 변화",
+      "source": "workbench_qa_result.json"
+    },
+    {
+      "name": "panel 반복 셀 분포",
+      "passed": true,
+      "detail": "반복 셀 분포",
+      "source": "workbench_qa_result.json"
+    },
+    {
+      "name": "panel 기준·갱신 이력",
+      "passed": true,
+      "detail": "기준·갱신 이력",
+      "source": "workbench_qa_result.json"
+    },
+    {
+      "name": "panel 지표 상관행렬",
+      "passed": true,
+      "detail": "지표 상관행렬",
+      "source": "workbench_qa_result.json"
+    },
+    {
+      "name": "electrochem radar visible",
+      "passed": true,
+      "detail": null,
+      "source": "workbench_qa_result.json"
+    },
+    {
+      "name": "offline pending does not recalculate",
+      "passed": true,
+      "detail": "계산 기준이 변경되었습니다. 로컬 서버를 실행한 뒤 적용하세요. 현재 화면은 저장된 결과입니다.",
+      "source": "workbench_qa_result.json"
+    },
+    {
+      "name": "empty selection retained",
+      "passed": true,
+      "detail": null,
+      "source": "workbench_qa_result.json"
+    },
+    {
+      "name": "offline preset saved",
+      "passed": true,
+      "detail": null,
+      "source": "workbench_qa_result.json"
+    },
+    {
+      "name": "mobile no page overflow",
+      "passed": true,
+      "detail": {
+        "w": 390,
+        "scroll": 390
+      },
+      "source": "workbench_qa_result.json"
+    },
+    {
+      "name": "no page errors",
+      "passed": true,
+      "detail": [],
+      "source": "workbench_qa_result.json"
+    },
+    {
+      "name": "localhost API connected",
+      "passed": true,
+      "detail": null,
+      "source": "workbench_http_qa_result.json"
+    },
+    {
+      "name": "same selected ID across maps",
+      "passed": true,
+      "detail": null,
+      "source": "workbench_http_qa_result.json"
+    },
+    {
+      "name": "edge contribution visible",
+      "passed": true,
+      "detail": null,
+      "source": "workbench_http_qa_result.json"
+    },
+    {
+      "name": "display toggle hides navigation",
+      "passed": true,
+      "detail": null,
+      "source": "workbench_http_qa_result.json"
+    },
+    {
+      "name": "zero selected metrics recalculates empty graph",
+      "passed": true,
+      "detail": [
+        0,
+        0
+      ],
+      "source": "workbench_http_qa_result.json"
+    },
+    {
+      "name": "zero metric selection retained after apply",
+      "passed": true,
+      "detail": null,
+      "source": "workbench_http_qa_result.json"
+    },
+    {
+      "name": "min overlap clamped for single metric",
+      "passed": true,
+      "detail": null,
+      "source": "workbench_http_qa_result.json"
+    },
+    {
+      "name": "one actual calculation metric",
+      "passed": true,
+      "detail": 1,
+      "source": "workbench_http_qa_result.json"
+    },
+    {
+      "name": "zero design selection removes design edges",
+      "passed": true,
+      "detail": null,
+      "source": "workbench_http_qa_result.json"
+    },
+    {
+      "name": "analysis module off avoids cross-pair calculation",
+      "passed": true,
+      "detail": 0,
+      "source": "workbench_http_qa_result.json"
+    },
+    {
+      "name": "server preset saved",
+      "passed": true,
+      "detail": "eab6148b0c7d23278e48",
+      "source": "workbench_http_qa_result.json"
+    },
+    {
+      "name": "preset reload restores calculation options",
+      "passed": true,
+      "detail": null,
+      "source": "workbench_http_qa_result.json"
+    },
+    {
+      "name": "invalid calculation rejected",
+      "passed": true,
+      "detail": null,
+      "source": "workbench_http_qa_result.json"
+    },
+    {
+      "name": "error state keeps previous results",
+      "passed": true,
+      "detail": null,
+      "source": "workbench_http_qa_result.json"
+    },
+    {
+      "name": "cross scatter and table populated",
+      "passed": true,
+      "detail": null,
+      "source": "workbench_http_qa_result.json"
+    },
+    {
+      "name": "cross pair links back to network",
+      "passed": true,
+      "detail": null,
+      "source": "workbench_http_qa_result.json"
+    },
+    {
+      "name": "loading-only controlled matches found",
+      "passed": true,
+      "detail": {
+        "confounded": 36,
+        "matched": 18,
+        "unchanged_target": 12
+      },
+      "source": "workbench_http_qa_result.json"
+    },
+    {
+      "name": "context-only controls are offered",
+      "passed": true,
+      "detail": null,
+      "source": "workbench_http_qa_result.json"
+    },
+    {
+      "name": "raw provenance and real cycle curves loaded",
+      "passed": true,
+      "detail": 9,
+      "source": "workbench_http_qa_result.json"
+    },
+    {
+      "name": "pulse calculation rows visible",
+      "passed": true,
+      "detail": 26,
+      "source": "workbench_http_qa_result.json"
+    },
+    {
+      "name": "dQdV available segments drawn",
+      "passed": true,
+      "detail": null,
+      "source": "workbench_http_qa_result.json"
+    },
+    {
+      "name": "separate voltage and current time plots",
+      "passed": true,
+      "detail": null,
+      "source": "workbench_http_qa_result.json"
+    },
+    {
+      "name": "cycle selection loads requested evidence",
+      "passed": true,
+      "detail": 2,
+      "source": "workbench_http_qa_result.json"
+    },
+    {
+      "name": "initial trajectory windows populated",
+      "passed": true,
+      "detail": null,
+      "source": "workbench_http_qa_result.json"
+    },
+    {
+      "name": "window recalculation adds requested window",
+      "passed": true,
+      "detail": [
+        "전체",
+        "초기",
+        "후기",
+        "QA 1–4"
+      ],
+      "source": "workbench_http_qa_result.json"
+    },
+    {
+      "name": "trajectory chart actual data",
+      "passed": true,
+      "detail": null,
+      "source": "workbench_http_qa_result.json"
+    },
+    {
+      "name": "replicate groups count independent cells",
+      "passed": true,
+      "detail": [
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3
+      ],
+      "source": "workbench_http_qa_result.json"
+    },
+    {
+      "name": "replicate box and dots visible",
+      "passed": true,
+      "detail": null,
+      "source": "workbench_http_qa_result.json"
+    },
+    {
+      "name": "reference actually saved",
+      "passed": true,
+      "detail": "8742364d43931da313f9",
+      "source": "workbench_http_qa_result.json"
+    },
+    {
+      "name": "fixed scale reference applied",
+      "passed": true,
+      "detail": "8742364d43931da313f9",
+      "source": "workbench_http_qa_result.json"
+    },
+    {
+      "name": "history populated",
+      "passed": true,
+      "detail": null,
+      "source": "workbench_http_qa_result.json"
+    },
+    {
+      "name": "history detail opens",
+      "passed": true,
+      "detail": null,
+      "source": "workbench_http_qa_result.json"
+    },
+    {
+      "name": "CSV metadata preview validates before writing",
+      "passed": true,
+      "detail": {
+        "valid": true,
+        "errors": [],
+        "total": 12,
+        "added": 0,
+        "updated": 1
+      },
+      "source": "workbench_http_qa_result.json"
+    },
+    {
+      "name": "latest UI initialized",
+      "passed": true,
+      "detail": null,
+      "source": "workbench_final_qa_result.json"
+    },
+    {
+      "name": "diagnostics actual status severity and unit columns",
+      "passed": true,
+      "detail": null,
+      "source": "workbench_final_qa_result.json"
+    },
+    {
+      "name": "diagnostics real verdict shown",
+      "passed": true,
+      "detail": [
+        "baseline_reference",
+        "baseline_reference",
+        "baseline_reference",
+        "baseline_reference",
+        "baseline_reference",
+        "baseline_reference",
+        "baseline_reference",
+        "baseline_reference",
+        "baseline_reference",
+        "baseline_reference"
+      ],
+      "source": "workbench_final_qa_result.json"
+    },
+    {
+      "name": "temperature ON tolerance OFF removes stale key",
+      "passed": true,
+      "detail": {
+        "target": "cathode_areal_capacity_mAh_cm2",
+        "controls": [],
+        "tolerances": {
+          "cathode_areal_capacity_mAh_cm2": 0
+        }
+      },
+      "source": "workbench_final_qa_result.json"
+    },
+    {
+      "name": "preset saves after tolerance OFF",
+      "passed": true,
+      "detail": null,
+      "source": "workbench_final_qa_result.json"
+    },
+    {
+      "name": "baseline response synchronizes fixed UI",
+      "passed": true,
+      "detail": "8742364d43931da313f9",
+      "source": "workbench_final_qa_result.json"
+    },
+    {
+      "name": "second baseline is distinct",
+      "passed": true,
+      "detail": [
+        "8742364d43931da313f9",
+        "5c2f6a4dae78a0f6d2d4"
+      ],
+      "source": "workbench_final_qa_result.json"
+    },
+    {
+      "name": "old fixed profile shows actual reference A",
+      "passed": true,
+      "detail": "8742364d43931da313f9",
+      "source": "workbench_final_qa_result.json"
+    },
+    {
+      "name": "baseline scales table populated",
+      "passed": true,
+      "detail": 5,
+      "source": "workbench_final_qa_result.json"
+    },
+    {
+      "name": "raw ingestion state table has records",
+      "passed": true,
+      "detail": 12,
+      "source": "workbench_final_qa_result.json"
+    },
+    {
+      "name": "optional issue reasons grouped",
+      "passed": true,
+      "detail": 3,
+      "source": "workbench_final_qa_result.json"
+    },
+    {
+      "name": "Excel sheet selection is exposed",
+      "passed": true,
+      "detail": [
+        "설명",
+        "실험등록"
+      ],
+      "source": "workbench_final_qa_result.json"
+    },
+    {
+      "name": "selected Excel sheet validates",
+      "passed": true,
+      "detail": {
+        "valid": true,
+        "errors": [],
+        "total": 12,
+        "added": 0,
+        "updated": 1
+      },
+      "source": "workbench_final_qa_result.json"
+    },
+    {
+      "name": "registration progress state visible",
+      "passed": true,
+      "detail": null,
+      "source": "workbench_final_qa_result.json"
+    },
+    {
+      "name": "reviewed metadata merge completes in demo",
+      "passed": true,
+      "detail": 1,
+      "source": "workbench_final_qa_result.json"
+    },
+    {
+      "name": "raw data path preserved",
+      "passed": true,
+      "detail": null,
+      "source": "workbench_final_qa_result.json"
+    },
+    {
+      "name": "restored metric choices keep heatmap selection",
+      "passed": true,
+      "detail": null,
+      "source": "workbench_final_qa_result.json"
+    },
+    {
+      "name": "correlation independent cell n visible",
+      "passed": true,
+      "detail": null,
+      "source": "workbench_final_qa_result.json"
+    },
+    {
+      "name": "automatic refresh preserves experiment and display threshold",
+      "passed": true,
+      "detail": null,
+      "source": "workbench_final_qa_result.json"
+    },
+    {
+      "name": "automatic refresh preserves preset choice",
+      "passed": true,
+      "detail": null,
+      "source": "workbench_final_qa_result.json"
+    },
+    {
+      "name": "selected edge gets fresh score and contributor",
+      "passed": true,
+      "detail": "유사도 0.123 · 공통 12개 · 관측 범위 100%",
+      "source": "workbench_final_qa_result.json"
+    },
+    {
+      "name": "raw refresh failure explicitly keeps previous result",
+      "passed": true,
+      "detail": null,
+      "source": "workbench_final_qa_result.json"
+    },
+    {
+      "name": "removed edge clears stale detail",
+      "passed": true,
+      "detail": null,
+      "source": "workbench_final_qa_result.json"
+    },
+    {
+      "name": "successful refresh clears failure notice",
+      "passed": true,
+      "detail": null,
+      "source": "workbench_final_qa_result.json"
+    },
+    {
+      "name": "mobile no horizontal overflow",
+      "passed": true,
+      "detail": null,
+      "source": "workbench_final_qa_result.json"
+    },
+    {
+      "name": "no runtime errors",
+      "passed": true,
+      "detail": [],
+      "source": "workbench_final_qa_result.json"
+    },
+    {
+      "name": "display modules nine and actual conditional analysis modules five",
+      "passed": true,
+      "source": "workbench_screens_qa_result.json"
+    },
+    {
+      "name": "final diagnostic verdict visible",
+      "passed": true,
+      "source": "workbench_screens_qa_result.json"
+    },
+    {
+      "name": "final mobile width fits",
+      "passed": true,
+      "source": "workbench_screens_qa_result.json"
+    },
+    {
+      "name": "no final screenshot runtime errors",
+      "passed": true,
+      "source": "workbench_screens_qa_result.json"
+    }
+  ],
+  "errors": [],
+  "superseded_attempts": [
+    {
+      "source": "workbench_http_qa_result.json",
+      "status": "superseded_partial_attempt",
+      "failures": [
+        {
+          "name": "fatal",
+          "passed": false,
+          "detail": "page.waitForResponse: Timeout 30000ms exceeded while waiting for event \"response\"\n    at C:\\Users\\LGES\\Documents\\Codex\\2026-10-21\\dlrj-x20\\work\\workbench_http_qa.cjs:21:833"
+        }
+      ],
+      "resolution": "Metadata merge completed on the server; final 120-second browser regression verified Excel preview, reviewed merge response, unchanged raw path, and UI progress."
+    }
+  ],
+  "notes": [
+    "No raw data were altered. Registration tests merged the same synthetic metadata row in the isolated work fixture.",
+    "Automatic refresh payload and last_error UI tests used an intercepted local /api/state response; actual calculation and registration APIs were exercised separately.",
+    "The historical HTTP attempt report is retained unchanged; its response timeout is not relabeled as a passing assertion."
+  ]
+}

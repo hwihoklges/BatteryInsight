@@ -1,0 +1,1 @@
+aea847f19a83f44ba87a48fc941fdfb8d5d80c36a8346c474e561214fa8a9e3e  BatteryInsight.exe

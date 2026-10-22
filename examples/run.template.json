@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "chunk_rows": 100000,
+  "max_cycle_rows": 2000000,
+  "sources": [
+    {
+      "path": "REPLACE_WITH_VERIFIED_PNE_EXPORT.csv",
+      "cell_id": "REPLACE_WITH_REGISTRY_CELL_ID",
+      "test_id": "REPLACE_WITH_UNIQUE_TEST_ID",
+      "test_type": "Unknown",
+      "encoding": "utf-8-sig",
+      "current_polarity": "charge_positive",
+      "include": true,
+      "conditions": {"chemistry": "ASSB_Si-Gr", "temperature_c": null, "pressure_mpa": null, "channel": null},
+      "columns": {
+        "cycle": {"column": "TotalCycle"},
+        "step_id": {"column": "StepNo"},
+        "time_s": {"column": "TotalTime_sec", "unit": "s"},
+        "step_time_s": {"column": "StepTime_sec", "unit": "s"},
+        "voltage_v": {"column": "Voltage", "unit": "V"},
+        "current_a": {"column": "Current", "unit": "mA"},
+        "capacity_ah": {"column": "Capacity", "unit": "mAh"}
+      }
+    }
+  ],
+  "features": {
+    "max_gap_s": 120,
+    "min_current_a": 0.000001,
+    "pulse_times_s": [0.1, 1, 10, 30, 60],
+    "min_curve_points": 15,
+    "assume_complete_bidirectional_cycles": false
+  },
+  "diagnostics": {"baseline_window": 5, "min_baseline_cycles": 3, "robust_z_threshold": 4.0},
+  "life": {"cutoff_cycle": 100, "eol_threshold_pct": 80, "eol_consecutive_cycles": 3, "min_early_cycles": 3},
+  "external_features": []
+}

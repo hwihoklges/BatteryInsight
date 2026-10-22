@@ -1,0 +1,25 @@
+{
+  "path": "REPLACE_WITH_VERIFIED_EXPORT.csv",
+  "expected_cell_id": "REPLACE_WITH_EXPORT_CELL_ID",
+  "expected_test_id": "REPLACE_WITH_EXPORT_TEST_ID",
+  "mapping": {
+    "namespace": "verified_export",
+    "layout": "wide",
+    "columns": {"cycle": "Cycle"},
+    "constants": {
+      "cell_id": "REPLACE_WITH_EXPORT_CELL_ID",
+      "test_id": "REPLACE_WITH_EXPORT_TEST_ID",
+      "definition_version": "REPLACE_WITH_VERIFIED_VERSION",
+      "source_revision": "REPLACE_WITH_FULL_40_HEX_GIT_OR_64_HEX_SHA256",
+      "observed_until_cycle": 100
+    },
+    "metrics": {
+      "REPLACE_WITH_SOURCE_COLUMN": {
+        "metric_id": "REPLACE_WITH_VERIFIED_METRIC_ID",
+        "unit": "REPLACE_WITH_VERIFIED_UNIT",
+        "family": "REPLACE_WITH_DEFINITION_FAMILY",
+        "role": "indicator"
+      }
+    }
+  }
+}

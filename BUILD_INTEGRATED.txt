@@ -1,0 +1,36 @@
+BatteryInsight 3.0.0 통합판 — 개발/재빌드 안내
+
+일반 사용자는 배포 ZIP의 BatteryInsight.exe만 실행합니다.
+대상 컴퓨터에 Python, 인터넷, API 키가 필요하지 않습니다.
+
+빌드 검증 환경: Windows 11 x64 / Python 3.12.10 x64.
+requirements-integrated-build.txt에 기록한 패키지가 설치된 빌드 컴퓨터에서:
+
+  python build/build_integrated.py
+
+결과: dist/BatteryInsight.exe
+빌드 스크립트는 pip 설치나 네트워크 다운로드를 수행하지 않습니다.
+동봉 고지문은 최종 검증 빌드에서 포함된 라이브러리의 고지문입니다.
+같은 의존성으로 재빌드할 때는 동봉한 고지문을 그대로 사용합니다.
+
+의존성을 바꿀 때는:
+  1. build_integrated.py로 Analysis-00.toc 생성
+  2. collect_notices.py로 실제 포함 라이브러리 고지문 갱신
+  3. build_integrated.py로 갱신 고지문 포함
+  4. audit_runtime.py와 최종 EXE 자체/GUI 검사 실행
+
+기본 검사:
+  python -m pytest -q
+  dist/BatteryInsight.exe self-test --result-json <프로젝트 밖의 새 JSON>
+  dist/BatteryInsight.exe check-gui --result-json <프로젝트 밖의 새 JSON>
+
+library.py: Parquet 목록·분류·실험 메타데이터·장표 연결
+library_workbench.py: 프로파일 지표·원곡선·기존 비교 작업실 연결
+desktop.py / unified_entry.py: 통합 화면 및 기존/신규 CLI
+native_cyc/: 검증된 CYC 4100 직접 판독·전체 기록 보존 엔진
+resources/: 오프라인 지표 사전·템플릿·사용 안내
+
+Python 소스 파일을 EXE 데이터로 포함하는 것은 코드/계산 해시를 확인하기 위함입니다.
+동봉된 이전 validation_summary.json 등은 단계별 과거 검사 기록입니다.
+현재 통합판의 최종 검증은 INTEGRATED_VALIDATION.json을 확인하세요.
+소스 ZIP에는 실제 원본 측정 데이터나 실제 변환 DB를 포함하지 않습니다.

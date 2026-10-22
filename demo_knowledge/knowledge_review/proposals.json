@@ -1,0 +1,92 @@
+{
+  "schema_version": "raw_link_proposals_v1",
+  "generated_at": "2026-10-22T04:46:01.901833+00:00",
+  "database_path": "C:\\Users\\LGES\\Documents\\Codex\\2026-10-21\\dlrj-x20\\work\\knowledge_demo\\fixture\\database",
+  "database_manifest_sha256": "56b90ad4c4d58488095ee86a84ab5acf0d518649c01fc7973e76fd0961f21061",
+  "experiments_csv_sha256": "9951cf147878fb5a461cb68201ec46262dd735dbf64b07128d9c2588dcad564b",
+  "raw_keys_sha256": "6076e966f448164726faafa05582bad36560c7c1c74e0538305b2e202cc99410",
+  "records_snapshot_sha256": "9299c4d3e952fdad0d53b84bda34c0eb8fef81c87c0198eddc26d5006ee89caa",
+  "raw_keys_source": {
+    "path": "C:\\Users\\LGES\\Documents\\Codex\\2026-10-21\\dlrj-x20\\work\\knowledge_demo\\raw_keys.json",
+    "sha256": "17a38c0eb91d6bde3896d9be8747a0713a3dd0ecdd828c6ebf0b84ba1030ca55"
+  },
+  "automatic_links_applied": 0,
+  "rows": [
+    {
+      "experiment_id": "e0",
+      "source_id": "source0",
+      "source_sha256": "962b36cf1312ec97ed787c997a4e6de5800f8705e3b7d9f70407624c73021f82",
+      "test_type": "RPT",
+      "source_channel": "",
+      "source_container": "C:\\Users\\LGES\\Documents\\Codex\\2026-10-21\\dlrj-x20\\work\\knowledge_demo\\fixture\\original_folder",
+      "raw_keys": {
+        "test_date": "2026-10-22",
+        "date_kind": "test_start",
+        "namespace": "synthetic-pressure-demo",
+        "set_no": "001",
+        "sample_name": "N3-A",
+        "channel_id": "",
+        "test_type": "RPT",
+        "rpt_stage": "BOL"
+      },
+      "candidates": [
+        {
+          "record_id": "synthetic-record-0",
+          "expected_record_revision": 1,
+          "expected_record_content_hash": "1b34e4717f0d15cc7304175e534e6ad71dd8fa5362e97683ef7595d5405e20ca",
+          "sample_id": "Synthetic-N3-A",
+          "sample_name": "N3-A",
+          "experiment_name": "합성 예시 · RPT BOL 압력 비교"
+        }
+      ],
+      "conflicts": [
+        {
+          "record_id": "synthetic-record-1",
+          "fields": [
+            "sample_name"
+          ]
+        }
+      ],
+      "missing_keys": [],
+      "status": "unique_candidate"
+    },
+    {
+      "experiment_id": "e1",
+      "source_id": "source1",
+      "source_sha256": "52a0b526b63d33275a60cabd766cdefa7d2e12b3356e7a0db0a28db4fc8a56c3",
+      "test_type": "RPT",
+      "source_channel": "",
+      "source_container": "C:\\Users\\LGES\\Documents\\Codex\\2026-10-21\\dlrj-x20\\work\\knowledge_demo\\fixture\\original_folder",
+      "raw_keys": {
+        "test_date": "2026-10-22",
+        "date_kind": "test_start",
+        "namespace": "synthetic-pressure-demo",
+        "set_no": "001",
+        "sample_name": "N3-B",
+        "channel_id": "",
+        "test_type": "RPT",
+        "rpt_stage": "BOL"
+      },
+      "candidates": [
+        {
+          "record_id": "synthetic-record-1",
+          "expected_record_revision": 1,
+          "expected_record_content_hash": "b0f0ca6ae54939dbecaaabe04fa0836037debb573d6139f632b321debd54fbae",
+          "sample_id": "Synthetic-N3-B",
+          "sample_name": "N3-B",
+          "experiment_name": "합성 예시 · RPT BOL 압력 비교"
+        }
+      ],
+      "conflicts": [
+        {
+          "record_id": "synthetic-record-0",
+          "fields": [
+            "sample_name"
+          ]
+        }
+      ],
+      "missing_keys": [],
+      "status": "unique_candidate"
+    }
+  ]
+}

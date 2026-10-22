@@ -1,0 +1,78 @@
+{
+  "synthetic_only": true,
+  "real_user_raw_analyzed": false,
+  "source_files_unchanged": true,
+  "experiments": 12,
+  "observations": 1440,
+  "available_metrics": 15,
+  "default_metrics": 5,
+  "design_fields": 12,
+  "control_fields": 8,
+  "modules": [
+    "network",
+    "crossview",
+    "evidence",
+    "controlled",
+    "registration",
+    "trajectory",
+    "replicates",
+    "history",
+    "correlation"
+  ],
+  "optional_packs_default_off": true,
+  "empty_selection_keeps_nodes_without_edges": true,
+  "replicate_groups": 20,
+  "independent_cells_per_demo_design": 3,
+  "initial_build_seconds": 64.774,
+  "incremental_refresh_seconds": 6.09,
+  "reused_raw_runs": 12,
+  "input_hashes": {
+    "experiments.csv": "1b4529440694bedf901ff7ebf5db07f2c8ebe849370839f3eb63bfddd3755b71",
+    "inbox\\SYNTHETIC_01.csv": "690d89ecff6e606954929613be6215173c8346c5256c02fade6ad3647b43fa93",
+    "inbox\\SYNTHETIC_02.csv": "6972f68daa214306afac4e939453196c8ff348adf1005d2c3cca9092c9fcf019",
+    "inbox\\SYNTHETIC_03.csv": "6e02e8a49d0c7593ad4e768baadcd4df4504f15f1e7794055a94d894dbf137d1",
+    "inbox\\SYNTHETIC_04.csv": "d26ef727b9e2b23193e6b80aa7ceb08ca458fa0335cedce50acf309a31cda5a8",
+    "inbox\\SYNTHETIC_05.csv": "e64230c00ca488a7f04e40fa0f49f498ebd4d27f10aed3f7ae18d2cc175800b9",
+    "inbox\\SYNTHETIC_06.csv": "94f56374e585f14f2d29c4ac32241f3007152aafb7bf87430f51e0e707e3ba08",
+    "inbox\\SYNTHETIC_07.csv": "bdea08ff5220643b5e5c9c26b42b6cd94d35cde16b279f00c1490e3cd1c2be43",
+    "inbox\\SYNTHETIC_08.csv": "f11d0860c4c3f0ca88d0c27868cfd88be07dad8fbe932324c5bda81fa285cd9f",
+    "inbox\\SYNTHETIC_09.csv": "ba5bc7c28560f3600880362235bcea1044d93b6767fc8a74705ee60dfb9c1698",
+    "inbox\\SYNTHETIC_10.csv": "cba7d0082353a8fb25dc400d78531a70cd46012c9ae78c4b9cf1e6530d357144",
+    "inbox\\SYNTHETIC_11.csv": "29c575fd1240bbacaa6ed5c7c8a63e711468fa96bcffe9cbbba0bc4fa0efd899",
+    "inbox\\SYNTHETIC_12.csv": "a69805aa620af1950197a59a6604b1fb6ef47d237491b83534e3270f68bb777c",
+    "pipeline.json": "3f1e20e4c417e431508e9ff847d66d74f538e4ff9e7079b0f9ccc17e1f209dda",
+    "relations.json": "e8d51596b486c20dc00e5090f64b867da14631d33a38858be8a265e2412619e3"
+  },
+  "created_at": "2026-10-22T04:51:21.567153+00:00",
+  "browser_reports": [
+    {
+      "report": "workbench_final_verification.json",
+      "checks": 79,
+      "page_errors": 0
+    },
+    {
+      "report": "mean_ui_final_verification.json",
+      "checks": 31,
+      "page_errors": 0
+    }
+  ],
+  "screenshots": [
+    "network_desktop.png",
+    "electrochem_desktop.png",
+    "cross_desktop.png",
+    "controlled_desktop.png",
+    "evidence_desktop.png",
+    "trajectory_desktop.png",
+    "replicates_desktop.png",
+    "correlation_desktop.png",
+    "registration_desktop.png",
+    "mobile.png",
+    "mean_group_desktop.png",
+    "mean_group_network.png",
+    "mean_group_mobile.png",
+    "mean_snapshot_desktop.png"
+  ],
+  "preview": "demo_workbench/index.html",
+  "interactive_launcher": "start_demo.cmd",
+  "preview_requires_server_for_new_calculation_and_evidence": true
+}

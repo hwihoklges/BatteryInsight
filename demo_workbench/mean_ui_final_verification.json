@@ -1,0 +1,201 @@
+{
+  "status": "passed",
+  "total_checks": 31,
+  "checks": [
+    {
+      "name": "cell equal weight arithmetic mean differs from median",
+      "passed": true,
+      "detail": "4.3333 %",
+      "source": "mean_ui_qa_result.json"
+    },
+    {
+      "name": "mean std and n shown",
+      "passed": true,
+      "detail": "4.9329 %",
+      "source": "mean_ui_qa_result.json"
+    },
+    {
+      "name": "all selected metrics listed",
+      "passed": true,
+      "detail": null,
+      "source": "mean_ui_qa_result.json"
+    },
+    {
+      "name": "mean markers drawn separately",
+      "passed": true,
+      "detail": null,
+      "source": "mean_ui_qa_result.json"
+    },
+    {
+      "name": "method explains repeated tests and sample SD",
+      "passed": true,
+      "detail": null,
+      "source": "mean_ui_qa_result.json"
+    },
+    {
+      "name": "single independent cell has no SD",
+      "passed": true,
+      "detail": null,
+      "source": "mean_ui_qa_result.json"
+    },
+    {
+      "name": "all-missing group mean stays empty",
+      "passed": true,
+      "detail": null,
+      "source": "mean_ui_qa_result.json"
+    },
+    {
+      "name": "group CSV has mean std physical-cell provenance",
+      "passed": true,
+      "detail": null,
+      "source": "mean_ui_qa_result.json"
+    },
+    {
+      "name": "design group highlights original individual tests",
+      "passed": true,
+      "detail": "그룹의 구성 시험 4개 강조 · 그룹 1 · 설계: SYNTHETIC_RECIPE_0_0 · 배치: SYNTHETIC_BATCH",
+      "source": "mean_ui_qa_result.json"
+    },
+    {
+      "name": "design map uses selected member comparison",
+      "passed": true,
+      "detail": null,
+      "source": "mean_ui_qa_result.json"
+    },
+    {
+      "name": "electrochem map preserves member highlight",
+      "passed": true,
+      "detail": null,
+      "source": "mean_ui_qa_result.json"
+    },
+    {
+      "name": "correlation remains cohort cell-level",
+      "passed": true,
+      "detail": null,
+      "source": "mean_ui_qa_result.json"
+    },
+    {
+      "name": "new cell retains stable group and updates member highlight",
+      "passed": true,
+      "detail": "그룹의 구성 시험 5개 강조 · 그룹 1 · 설계: SYNTHETIC_RECIPE_0_0 · 배치: SYNTHETIC_BATCH",
+      "source": "mean_ui_qa_result.json"
+    },
+    {
+      "name": "new cell updates arithmetic mean and valid n",
+      "passed": true,
+      "detail": "4.25 %",
+      "source": "mean_ui_qa_result.json"
+    },
+    {
+      "name": "group selected ID remains stable",
+      "passed": true,
+      "detail": null,
+      "source": "mean_ui_qa_result.json"
+    },
+    {
+      "name": "mobile does not overflow",
+      "passed": true,
+      "detail": null,
+      "source": "mean_ui_qa_result.json"
+    },
+    {
+      "name": "no JavaScript runtime errors",
+      "passed": true,
+      "detail": [],
+      "source": "mean_ui_qa_result.json"
+    },
+    {
+      "name": "snapshot controls reflect one observation",
+      "passed": true,
+      "detail": null,
+      "source": "db_axis_ui_qa_result.json"
+    },
+    {
+      "name": "RPT axis distinguished from lifetime",
+      "passed": true,
+      "detail": null,
+      "source": "db_axis_ui_qa_result.json"
+    },
+    {
+      "name": "navigation uses observation window",
+      "passed": true,
+      "detail": null,
+      "source": "db_axis_ui_qa_result.json"
+    },
+    {
+      "name": "DB registry edit disabled and reason displayed",
+      "passed": true,
+      "detail": null,
+      "source": "db_axis_ui_qa_result.json"
+    },
+    {
+      "name": "DB manual metadata inputs disabled",
+      "passed": true,
+      "detail": null,
+      "source": "db_axis_ui_qa_result.json"
+    },
+    {
+      "name": "snapshot mean method identified",
+      "passed": true,
+      "detail": null,
+      "source": "db_axis_ui_qa_result.json"
+    },
+    {
+      "name": "range mode restores valid minimum and editable end",
+      "passed": true,
+      "detail": null,
+      "source": "db_axis_ui_qa_result.json"
+    },
+    {
+      "name": "switch to snapshot binds start and end",
+      "passed": true,
+      "detail": null,
+      "source": "db_axis_ui_qa_result.json"
+    },
+    {
+      "name": "snapshot index edits synchronize end",
+      "passed": true,
+      "detail": null,
+      "source": "db_axis_ui_qa_result.json"
+    },
+    {
+      "name": "snapshot window index edits synchronize end",
+      "passed": true,
+      "detail": null,
+      "source": "db_axis_ui_qa_result.json"
+    },
+    {
+      "name": "return to prior range restores saved boundaries",
+      "passed": true,
+      "detail": null,
+      "source": "db_axis_ui_qa_result.json"
+    },
+    {
+      "name": "offline changes remain pending",
+      "passed": true,
+      "detail": null,
+      "source": "db_axis_ui_qa_result.json"
+    },
+    {
+      "name": "snapshot mobile no overflow",
+      "passed": true,
+      "detail": null,
+      "source": "db_axis_ui_qa_result.json"
+    },
+    {
+      "name": "no runtime errors",
+      "passed": true,
+      "detail": [],
+      "source": "db_axis_ui_qa_result.json"
+    }
+  ],
+  "errors": [],
+  "scope": "Cell-equal-weight arithmetic mean UI, group drilldown, automatic group updates, database observation-axis and snapshot UI",
+  "fixture_note": "Statistics were generated by the actual analysis engine from synthetic observations. The group update poll used a loopback-only fixture server; no production data or registration was changed.",
+  "screenshots": [
+    "mean_group_desktop.png",
+    "mean_group_network.png",
+    "mean_group_mobile.png",
+    "mean_snapshot_desktop.png"
+  ]
+}

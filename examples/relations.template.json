@@ -1,0 +1,195 @@
+{
+  "schema_version": 1,
+  "inbox": "REPLACE_WITH_RAW_FOLDER",
+  "registrations": "experiments.template.csv",
+  "pipeline_template": "run.template.json",
+  "patterns": [
+    "*.csv",
+    "*.parquet"
+  ],
+  "settle_seconds": 30,
+  "comparison": {
+    "life_min": 1,
+    "life_max": 100,
+    "summary": "median",
+    "min_points": 10,
+    "min_overlap": 3,
+    "min_overlap_fraction": 0.6,
+    "metric_spearman_min_n": 5,
+    "window_tolerance": 0,
+    "edge_min_similarity": 0,
+    "allow_mixed_chemistry": true
+  },
+  "metrics": [
+    {
+      "metric_id": "local.CE",
+      "label": "쿨롱 효율",
+      "table": "cycles",
+      "column": "coulombic_efficiency_pct",
+      "unit": "%",
+      "family": "coulombic_efficiency",
+      "role": "indicator"
+    },
+    {
+      "metric_id": "local.dchg_V_avg",
+      "label": "평균 방전 전압",
+      "table": "cycles",
+      "column": "discharge_mean_voltage_v",
+      "unit": "V",
+      "family": "discharge_voltage",
+      "role": "indicator"
+    },
+    {
+      "metric_id": "local.chg_peak_V",
+      "label": "충전 dQ/dV 피크 위치",
+      "table": "cycles",
+      "column": "charge_dqdv_peak_voltage_v",
+      "unit": "V",
+      "family": "charge_dqdv_peak_position",
+      "role": "indicator"
+    },
+    {
+      "metric_id": "local.dchg_peak_V",
+      "label": "방전 dQ/dV 피크 위치",
+      "table": "cycles",
+      "column": "discharge_dqdv_peak_voltage_v",
+      "unit": "V",
+      "family": "discharge_dqdv_peak_position",
+      "role": "indicator"
+    },
+    {
+      "metric_id": "local.dchg_low_soc_dvdq",
+      "label": "저SOC dV/dQ",
+      "table": "cycles",
+      "column": "discharge_dvdq_low_soc_v_per_ah",
+      "unit": "V/Ah",
+      "family": "discharge_low_soc_dvdq",
+      "role": "indicator"
+    }
+  ],
+  "design": {
+    "fields": [
+      {
+        "field_id": "cathode_active_material",
+        "label": "양극 활물질",
+        "kind": "categorical",
+        "unit": "category",
+        "group": "cathode_active",
+        "weight": 2
+      },
+      {
+        "field_id": "anode_active_material",
+        "label": "음극 활물질",
+        "kind": "categorical",
+        "unit": "category",
+        "group": "anode_active",
+        "weight": 2
+      },
+      {
+        "field_id": "cathode_solid_electrolyte",
+        "label": "양극 내 고체전해질",
+        "kind": "categorical",
+        "unit": "category",
+        "group": "cathode_se",
+        "weight": 0.5
+      },
+      {
+        "field_id": "anode_solid_electrolyte",
+        "label": "음극 내 고체전해질",
+        "kind": "categorical",
+        "unit": "category",
+        "group": "anode_se",
+        "weight": 0.5
+      },
+      {
+        "field_id": "cathode_binder",
+        "label": "양극 바인더",
+        "kind": "categorical",
+        "unit": "category",
+        "group": "cathode_binder",
+        "weight": 0.5
+      },
+      {
+        "field_id": "anode_binder",
+        "label": "음극 바인더",
+        "kind": "categorical",
+        "unit": "category",
+        "group": "anode_binder",
+        "weight": 0.5
+      },
+      {
+        "field_id": "cathode_conductive_additive",
+        "label": "양극 도전재",
+        "kind": "categorical",
+        "unit": "category",
+        "group": "cathode_conductive",
+        "weight": 0.5
+      },
+      {
+        "field_id": "anode_conductive_additive",
+        "label": "음극 도전재",
+        "kind": "categorical",
+        "unit": "category",
+        "group": "anode_conductive",
+        "weight": 0.5
+      },
+      {
+        "field_id": "cathode_electrode_composition",
+        "label": "양극 전극 조성 · 건조 고형분 기준",
+        "kind": "composition",
+        "unit": "wt%",
+        "group": "cathode_composition",
+        "weight": 1,
+        "composition_basis": "electrode_total",
+        "components": [
+          "cathode_active_wt_pct",
+          "cathode_solid_electrolyte_wt_pct",
+          "cathode_conductive_wt_pct",
+          "cathode_binder_wt_pct",
+          "cathode_other_wt_pct"
+        ]
+      },
+      {
+        "field_id": "anode_electrode_composition",
+        "label": "음극 전극 조성 · 건조 고형분 기준",
+        "kind": "composition",
+        "unit": "wt%",
+        "group": "anode_composition",
+        "weight": 1,
+        "composition_basis": "electrode_total",
+        "components": [
+          "anode_active_wt_pct",
+          "anode_solid_electrolyte_wt_pct",
+          "anode_conductive_wt_pct",
+          "anode_binder_wt_pct",
+          "anode_other_wt_pct"
+        ]
+      },
+      {
+        "field_id": "cathode_areal_capacity_mAh_cm2",
+        "label": "양극 면적 용량 로딩 · 단면 기준",
+        "kind": "numeric",
+        "unit": "mAh/cm2",
+        "scale": 1,
+        "group": "cathode_loading",
+        "weight": 1
+      },
+      {
+        "field_id": "anode_areal_capacity_mAh_cm2",
+        "label": "음극 면적 용량 로딩 · 단면 기준",
+        "kind": "numeric",
+        "unit": "mAh/cm2",
+        "scale": 1,
+        "group": "anode_loading",
+        "weight": 1
+      }
+    ],
+    "settings": {
+      "group_column": "design_group",
+      "min_fields": 3,
+      "min_coverage": 0.6,
+      "min_similarity": 0,
+      "composition_sum_tolerance": 1
+    }
+  }
+}

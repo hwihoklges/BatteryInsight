@@ -1,0 +1,467 @@
+{
+  "schema_version": "knowledge_registry_v1",
+  "revision": 3,
+  "documents": [
+    {
+      "blocks": [
+        {
+          "block_id": "ev_47df634a29d307f2fddf94d7",
+          "kind": "text",
+          "locator": "slide:1/shape:1",
+          "needs_review": true,
+          "text": "합성 예시 · 압력 비교"
+        },
+        {
+          "block_id": "ev_b2e59d7110f7e9b0427d52ee",
+          "kind": "text",
+          "locator": "slide:1/shape:2",
+          "needs_review": true,
+          "text": "검증용 합성 데이터입니다. 실제 사용자 장표나 실험 결과가 아닙니다.\n시험 시작일 2026-10-22 · 세트 001 · 실험 RPT BOL 압력 비교"
+        },
+        {
+          "block_id": "ev_7871f104d4b12a47e6a09f90",
+          "kind": "table_cell",
+          "locator": "slide:1/shape:3/table:r1:c1",
+          "needs_review": true,
+          "text": "샘플"
+        },
+        {
+          "block_id": "ev_362c6250b46c81e847ac908f",
+          "kind": "table_cell",
+          "locator": "slide:1/shape:3/table:r1:c2",
+          "needs_review": true,
+          "text": "물리 셀"
+        },
+        {
+          "block_id": "ev_792e2e3dfeabfc9fb2fb438b",
+          "kind": "table_cell",
+          "locator": "slide:1/shape:3/table:r1:c3",
+          "needs_review": true,
+          "text": "raw 시험 ID"
+        },
+        {
+          "block_id": "ev_3e047f2ed22c77963cba3275",
+          "kind": "table_cell",
+          "locator": "slide:1/shape:3/table:r1:c4",
+          "needs_review": true,
+          "text": "설계"
+        },
+        {
+          "block_id": "ev_0ce378b1645bdbdcc922fb9c",
+          "kind": "table_cell",
+          "locator": "slide:1/shape:3/table:r1:c5",
+          "needs_review": true,
+          "text": "배치"
+        },
+        {
+          "block_id": "ev_84938fe76c26a270f93610ce",
+          "kind": "table_cell",
+          "locator": "slide:1/shape:3/table:r1:c6",
+          "needs_review": true,
+          "text": "압력 (MPa)"
+        },
+        {
+          "block_id": "ev_b29f89e3dc89a194de8a1887",
+          "kind": "table_cell",
+          "locator": "slide:1/shape:3/table:r2:c1",
+          "needs_review": true,
+          "text": "N3-A"
+        },
+        {
+          "block_id": "ev_6baf77cf58301e63e40d4897",
+          "kind": "table_cell",
+          "locator": "slide:1/shape:3/table:r2:c2",
+          "needs_review": true,
+          "text": "Cell-A"
+        },
+        {
+          "block_id": "ev_c3df785bfee17e47c1f77c96",
+          "kind": "table_cell",
+          "locator": "slide:1/shape:3/table:r2:c3",
+          "needs_review": true,
+          "text": "e0"
+        },
+        {
+          "block_id": "ev_d3b85fff15a2cf1094d50f07",
+          "kind": "table_cell",
+          "locator": "slide:1/shape:3/table:r2:c4",
+          "needs_review": true,
+          "text": "D1"
+        },
+        {
+          "block_id": "ev_a1e565e3d5eb6180d6b4151f",
+          "kind": "table_cell",
+          "locator": "slide:1/shape:3/table:r2:c5",
+          "needs_review": true,
+          "text": "B1"
+        },
+        {
+          "block_id": "ev_e0a5a4cbc0a695b57cc72b5f",
+          "kind": "table_cell",
+          "locator": "slide:1/shape:3/table:r2:c6",
+          "needs_review": true,
+          "text": "5"
+        },
+        {
+          "block_id": "ev_58a5cadb461aa0946fc074b3",
+          "kind": "table_cell",
+          "locator": "slide:1/shape:3/table:r3:c1",
+          "needs_review": true,
+          "text": "N3-B"
+        },
+        {
+          "block_id": "ev_98e1bb24c2c590f1b18d86f1",
+          "kind": "table_cell",
+          "locator": "slide:1/shape:3/table:r3:c2",
+          "needs_review": true,
+          "text": "Cell-B"
+        },
+        {
+          "block_id": "ev_288c462097cf43b809f5562b",
+          "kind": "table_cell",
+          "locator": "slide:1/shape:3/table:r3:c3",
+          "needs_review": true,
+          "text": "e1"
+        },
+        {
+          "block_id": "ev_eee11e74f59eafb0c198190b",
+          "kind": "table_cell",
+          "locator": "slide:1/shape:3/table:r3:c4",
+          "needs_review": true,
+          "text": "D1"
+        },
+        {
+          "block_id": "ev_5a86ce65c098a7bf2639cca6",
+          "kind": "table_cell",
+          "locator": "slide:1/shape:3/table:r3:c5",
+          "needs_review": true,
+          "text": "B1"
+        },
+        {
+          "block_id": "ev_e219678d30ae139c05b06c3a",
+          "kind": "table_cell",
+          "locator": "slide:1/shape:3/table:r3:c6",
+          "needs_review": true,
+          "text": "10"
+        }
+      ],
+      "document_id": "doc_4d316ca788bfcee012003df0",
+      "extraction_complete": true,
+      "format": "pptx",
+      "issues": [
+        {
+          "code": "layout_not_interpreted",
+          "message": "Slide positions, arrows, colors and table headers do not automatically establish experiment/sample relationships."
+        }
+      ],
+      "metadata": {
+        "file_bytes": 28852,
+        "slide_count": 1
+      },
+      "name": "합성 예시_압력 비교.pptx",
+      "schema_version": "document_intake_v1",
+      "sha256": "4d316ca788bfcee012003df0276142620f9f3cac667a84d75ad8bf1abac1e10c",
+      "source_path": "C:\\Users\\LGES\\Documents\\Codex\\2026-10-21\\dlrj-x20\\work\\knowledge_demo\\합성 예시_압력 비교.pptx",
+      "status": "complete",
+      "imported_at": "2026-10-22T04:46:01.824495+00:00"
+    }
+  ],
+  "evidence": [
+    {
+      "block_id": "ev_0ce378b1645bdbdcc922fb9c",
+      "kind": "table_cell",
+      "locator": "slide:1/shape:3/table:r1:c5",
+      "needs_review": true,
+      "text": "배치",
+      "evidence_id": "ev_0ce378b1645bdbdcc922fb9c",
+      "document_id": "doc_4d316ca788bfcee012003df0"
+    },
+    {
+      "block_id": "ev_288c462097cf43b809f5562b",
+      "kind": "table_cell",
+      "locator": "slide:1/shape:3/table:r3:c3",
+      "needs_review": true,
+      "text": "e1",
+      "evidence_id": "ev_288c462097cf43b809f5562b",
+      "document_id": "doc_4d316ca788bfcee012003df0"
+    },
+    {
+      "block_id": "ev_362c6250b46c81e847ac908f",
+      "kind": "table_cell",
+      "locator": "slide:1/shape:3/table:r1:c2",
+      "needs_review": true,
+      "text": "물리 셀",
+      "evidence_id": "ev_362c6250b46c81e847ac908f",
+      "document_id": "doc_4d316ca788bfcee012003df0"
+    },
+    {
+      "block_id": "ev_3e047f2ed22c77963cba3275",
+      "kind": "table_cell",
+      "locator": "slide:1/shape:3/table:r1:c4",
+      "needs_review": true,
+      "text": "설계",
+      "evidence_id": "ev_3e047f2ed22c77963cba3275",
+      "document_id": "doc_4d316ca788bfcee012003df0"
+    },
+    {
+      "block_id": "ev_47df634a29d307f2fddf94d7",
+      "kind": "text",
+      "locator": "slide:1/shape:1",
+      "needs_review": true,
+      "text": "합성 예시 · 압력 비교",
+      "evidence_id": "ev_47df634a29d307f2fddf94d7",
+      "document_id": "doc_4d316ca788bfcee012003df0"
+    },
+    {
+      "block_id": "ev_58a5cadb461aa0946fc074b3",
+      "kind": "table_cell",
+      "locator": "slide:1/shape:3/table:r3:c1",
+      "needs_review": true,
+      "text": "N3-B",
+      "evidence_id": "ev_58a5cadb461aa0946fc074b3",
+      "document_id": "doc_4d316ca788bfcee012003df0"
+    },
+    {
+      "block_id": "ev_5a86ce65c098a7bf2639cca6",
+      "kind": "table_cell",
+      "locator": "slide:1/shape:3/table:r3:c5",
+      "needs_review": true,
+      "text": "B1",
+      "evidence_id": "ev_5a86ce65c098a7bf2639cca6",
+      "document_id": "doc_4d316ca788bfcee012003df0"
+    },
+    {
+      "block_id": "ev_6baf77cf58301e63e40d4897",
+      "kind": "table_cell",
+      "locator": "slide:1/shape:3/table:r2:c2",
+      "needs_review": true,
+      "text": "Cell-A",
+      "evidence_id": "ev_6baf77cf58301e63e40d4897",
+      "document_id": "doc_4d316ca788bfcee012003df0"
+    },
+    {
+      "block_id": "ev_7871f104d4b12a47e6a09f90",
+      "kind": "table_cell",
+      "locator": "slide:1/shape:3/table:r1:c1",
+      "needs_review": true,
+      "text": "샘플",
+      "evidence_id": "ev_7871f104d4b12a47e6a09f90",
+      "document_id": "doc_4d316ca788bfcee012003df0"
+    },
+    {
+      "block_id": "ev_792e2e3dfeabfc9fb2fb438b",
+      "kind": "table_cell",
+      "locator": "slide:1/shape:3/table:r1:c3",
+      "needs_review": true,
+      "text": "raw 시험 ID",
+      "evidence_id": "ev_792e2e3dfeabfc9fb2fb438b",
+      "document_id": "doc_4d316ca788bfcee012003df0"
+    },
+    {
+      "block_id": "ev_84938fe76c26a270f93610ce",
+      "kind": "table_cell",
+      "locator": "slide:1/shape:3/table:r1:c6",
+      "needs_review": true,
+      "text": "압력 (MPa)",
+      "evidence_id": "ev_84938fe76c26a270f93610ce",
+      "document_id": "doc_4d316ca788bfcee012003df0"
+    },
+    {
+      "block_id": "ev_98e1bb24c2c590f1b18d86f1",
+      "kind": "table_cell",
+      "locator": "slide:1/shape:3/table:r3:c2",
+      "needs_review": true,
+      "text": "Cell-B",
+      "evidence_id": "ev_98e1bb24c2c590f1b18d86f1",
+      "document_id": "doc_4d316ca788bfcee012003df0"
+    },
+    {
+      "block_id": "ev_a1e565e3d5eb6180d6b4151f",
+      "kind": "table_cell",
+      "locator": "slide:1/shape:3/table:r2:c5",
+      "needs_review": true,
+      "text": "B1",
+      "evidence_id": "ev_a1e565e3d5eb6180d6b4151f",
+      "document_id": "doc_4d316ca788bfcee012003df0"
+    },
+    {
+      "block_id": "ev_b29f89e3dc89a194de8a1887",
+      "kind": "table_cell",
+      "locator": "slide:1/shape:3/table:r2:c1",
+      "needs_review": true,
+      "text": "N3-A",
+      "evidence_id": "ev_b29f89e3dc89a194de8a1887",
+      "document_id": "doc_4d316ca788bfcee012003df0"
+    },
+    {
+      "block_id": "ev_b2e59d7110f7e9b0427d52ee",
+      "kind": "text",
+      "locator": "slide:1/shape:2",
+      "needs_review": true,
+      "text": "검증용 합성 데이터입니다. 실제 사용자 장표나 실험 결과가 아닙니다.\n시험 시작일 2026-10-22 · 세트 001 · 실험 RPT BOL 압력 비교",
+      "evidence_id": "ev_b2e59d7110f7e9b0427d52ee",
+      "document_id": "doc_4d316ca788bfcee012003df0"
+    },
+    {
+      "block_id": "ev_c3df785bfee17e47c1f77c96",
+      "kind": "table_cell",
+      "locator": "slide:1/shape:3/table:r2:c3",
+      "needs_review": true,
+      "text": "e0",
+      "evidence_id": "ev_c3df785bfee17e47c1f77c96",
+      "document_id": "doc_4d316ca788bfcee012003df0"
+    },
+    {
+      "block_id": "ev_d3b85fff15a2cf1094d50f07",
+      "kind": "table_cell",
+      "locator": "slide:1/shape:3/table:r2:c4",
+      "needs_review": true,
+      "text": "D1",
+      "evidence_id": "ev_d3b85fff15a2cf1094d50f07",
+      "document_id": "doc_4d316ca788bfcee012003df0"
+    },
+    {
+      "block_id": "ev_e0a5a4cbc0a695b57cc72b5f",
+      "kind": "table_cell",
+      "locator": "slide:1/shape:3/table:r2:c6",
+      "needs_review": true,
+      "text": "5",
+      "evidence_id": "ev_e0a5a4cbc0a695b57cc72b5f",
+      "document_id": "doc_4d316ca788bfcee012003df0"
+    },
+    {
+      "block_id": "ev_e219678d30ae139c05b06c3a",
+      "kind": "table_cell",
+      "locator": "slide:1/shape:3/table:r3:c6",
+      "needs_review": true,
+      "text": "10",
+      "evidence_id": "ev_e219678d30ae139c05b06c3a",
+      "document_id": "doc_4d316ca788bfcee012003df0"
+    },
+    {
+      "block_id": "ev_eee11e74f59eafb0c198190b",
+      "kind": "table_cell",
+      "locator": "slide:1/shape:3/table:r3:c4",
+      "needs_review": true,
+      "text": "D1",
+      "evidence_id": "ev_eee11e74f59eafb0c198190b",
+      "document_id": "doc_4d316ca788bfcee012003df0"
+    }
+  ],
+  "samples": [
+    {
+      "sample_id": "Synthetic-N3-A",
+      "sample_name": "N3-A",
+      "sample_aliases": [],
+      "created_at": "2026-10-22T04:46:01.840935+00:00"
+    },
+    {
+      "sample_id": "Synthetic-N3-B",
+      "sample_name": "N3-B",
+      "sample_aliases": [],
+      "created_at": "2026-10-22T04:46:01.840935+00:00"
+    }
+  ],
+  "records": [
+    {
+      "batch_id": "B1",
+      "channel_id": null,
+      "date_kind": "test_start",
+      "design_id": "D1",
+      "evidence_ids": [
+        "ev_6baf77cf58301e63e40d4897",
+        "ev_a1e565e3d5eb6180d6b4151f",
+        "ev_b29f89e3dc89a194de8a1887",
+        "ev_b2e59d7110f7e9b0427d52ee",
+        "ev_c3df785bfee17e47c1f77c96",
+        "ev_d3b85fff15a2cf1094d50f07",
+        "ev_e0a5a4cbc0a695b57cc72b5f"
+      ],
+      "experiment_name": "합성 예시 · RPT BOL 압력 비교",
+      "field_evidence": {
+        "sample_name": [
+          "ev_b29f89e3dc89a194de8a1887"
+        ],
+        "set_no": [
+          "ev_b2e59d7110f7e9b0427d52ee"
+        ],
+        "test_date": [
+          "ev_b2e59d7110f7e9b0427d52ee"
+        ]
+      },
+      "manufacture_date": null,
+      "matching_eligible": true,
+      "metadata": {
+        "pressure_mpa": 5
+      },
+      "namespace": "synthetic-pressure-demo",
+      "notes": "Synthetic verification example; not a real user experiment.",
+      "physical_cell_id": "Cell-A",
+      "record_id": "synthetic-record-0",
+      "report_date": null,
+      "rpt_stage": "BOL",
+      "sample_aliases": [],
+      "sample_id": "Synthetic-N3-A",
+      "sample_name": "N3-A",
+      "set_no": "001",
+      "status": "confirmed",
+      "test_date": "2026-10-22",
+      "test_end_date": null,
+      "test_type": "RPT",
+      "revision": 1,
+      "content_hash": "1b34e4717f0d15cc7304175e534e6ad71dd8fa5362e97683ef7595d5405e20ca",
+      "created_at": "2026-10-22T04:46:01.840935+00:00",
+      "updated_at": "2026-10-22T04:46:01.840935+00:00"
+    },
+    {
+      "batch_id": "B1",
+      "channel_id": null,
+      "date_kind": "test_start",
+      "design_id": "D1",
+      "evidence_ids": [
+        "ev_288c462097cf43b809f5562b",
+        "ev_58a5cadb461aa0946fc074b3",
+        "ev_5a86ce65c098a7bf2639cca6",
+        "ev_98e1bb24c2c590f1b18d86f1",
+        "ev_b2e59d7110f7e9b0427d52ee",
+        "ev_e219678d30ae139c05b06c3a",
+        "ev_eee11e74f59eafb0c198190b"
+      ],
+      "experiment_name": "합성 예시 · RPT BOL 압력 비교",
+      "field_evidence": {
+        "sample_name": [
+          "ev_58a5cadb461aa0946fc074b3"
+        ],
+        "set_no": [
+          "ev_b2e59d7110f7e9b0427d52ee"
+        ],
+        "test_date": [
+          "ev_b2e59d7110f7e9b0427d52ee"
+        ]
+      },
+      "manufacture_date": null,
+      "matching_eligible": true,
+      "metadata": {
+        "pressure_mpa": 10
+      },
+      "namespace": "synthetic-pressure-demo",
+      "notes": "Synthetic verification example; not a real user experiment.",
+      "physical_cell_id": "Cell-B",
+      "record_id": "synthetic-record-1",
+      "report_date": null,
+      "rpt_stage": "BOL",
+      "sample_aliases": [],
+      "sample_id": "Synthetic-N3-B",
+      "sample_name": "N3-B",
+      "set_no": "001",
+      "status": "confirmed",
+      "test_date": "2026-10-22",
+      "test_end_date": null,
+      "test_type": "RPT",
+      "revision": 1,
+      "content_hash": "b0f0ca6ae54939dbecaaabe04fa0836037debb573d6139f632b321debd54fbae",
+      "created_at": "2026-10-22T04:46:01.840935+00:00",
+      "updated_at": "2026-10-22T04:46:01.840935+00:00"
+    }
+  ]
+}

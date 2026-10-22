@@ -1,0 +1,648 @@
+{
+  "created_at": "2026-10-22T04:21:53.631067+00:00",
+  "scope": "Performance audit; no ML; raw inputs and actual DB unchanged",
+  "actual_before": {
+    "label": "before",
+    "cold_start_s": 14.546545799996238,
+    "warm_refresh_s": [
+      10.496256400016136,
+      9.14173849998042,
+      9.242882599995937
+    ],
+    "refresh_peak_python_bytes": 35444394,
+    "state_bytes": 2265966,
+    "evidence_s": 0.4766339999914635,
+    "experiments": 36,
+    "observations": 2944,
+    "edge_counts": {
+      "electrochem": 116,
+      "design": 0
+    },
+    "measurement_note": "Wall-clock trials with one Arrow/BLAS worker. Tracemalloc and cProfile measured separately. OS file cache not flushed."
+  },
+  "actual_after": {
+    "label": "after",
+    "cold_start_s": 7.171300000016345,
+    "warm_refresh_s": [
+      6.927427699993132,
+      8.080627899995307,
+      6.320339600002626
+    ],
+    "refresh_peak_python_bytes": 35347696,
+    "state_serialization_s": [
+      0.04812870000023395,
+      0.045613299997057766,
+      0.04785859998082742
+    ],
+    "state_bytes": 2265966,
+    "evidence_s": 0.22156939998967573,
+    "experiments": 36,
+    "observations": 2944,
+    "edge_counts": {
+      "electrochem": 116,
+      "design": 0
+    },
+    "measurement_note": "Wall-clock trials with one Arrow/BLAS worker. Tracemalloc and cProfile measured separately. OS file cache not flushed.",
+    "http_first_state_s": 0.04169189999811351,
+    "unchanged_http_poll_s": [
+      0.0010155999916605651,
+      0.0005489999894052744,
+      0.0005510000046342611,
+      0.00043810001807287335,
+      0.000430300016887486
+    ],
+    "unchanged_http_body_bytes": 0
+  },
+  "actual_refresh_median_s": {
+    "before": 9.242882599995937,
+    "after": 6.927427699993132
+  },
+  "io_before": {
+    "label": "io_before",
+    "cold_bundle_s": 11.716097800002899,
+    "counts": {
+      "code_hash_calls": 108,
+      "all_hash_calls": 437,
+      "hash_bytes": 19816649,
+      "cycle_table_reads": 72,
+      "parquet_table_reads": 108,
+      "silver_batches": 36,
+      "silver_decoded_rows": 537048
+    },
+    "experiments": 36,
+    "observations": 2944,
+    "observations_sha256": "a94e38c5d0a8cb1d42d3c0e3f73af01b4021e58ccf5a28beb65a11ce33477753",
+    "note": "Instrumentation counts a cold derived-extras cache; original DB read-only; OS cache not flushed."
+  },
+  "io_after": {
+    "label": "io_after",
+    "cold_bundle_s": 6.602963899989845,
+    "counts": {
+      "code_hash_calls": 2,
+      "all_hash_calls": 295,
+      "hash_bytes": 16346858,
+      "cycle_table_reads": 36,
+      "parquet_table_reads": 72,
+      "silver_batches": 0,
+      "silver_decoded_rows": 0
+    },
+    "experiments": 36,
+    "observations": 2944,
+    "observations_sha256": "a94e38c5d0a8cb1d42d3c0e3f73af01b4021e58ccf5a28beb65a11ce33477753",
+    "note": "Instrumentation counts a cold derived-extras cache; original DB read-only; OS cache not flushed."
+  },
+  "relations": {
+    "synthetic_only": true,
+    "checks": [
+      {
+        "options": {},
+        "exact_full_output_equal": true,
+        "sha256": "bc33b920cb8af42d9f00b411cfaaac30fbca586a7d5fd6cd9c473cec4d189037"
+      },
+      {
+        "options": {
+          "enabled_modules": [
+            "network"
+          ]
+        },
+        "exact_full_output_equal": true,
+        "sha256": "a37618ecfa54427489cbfdea84a3608fe11600d8440c591028b3e893656cb4ef"
+      },
+      {
+        "options": {
+          "controlled": {
+            "target": "loading"
+          }
+        },
+        "exact_full_output_equal": true,
+        "sha256": "56767d6bf7d8ec03c71db1f10b62805d8f20f18f39f73c7277119d29b03d44e2"
+      },
+      {
+        "options": {
+          "controlled": {
+            "target": "loading"
+          },
+          "reference_experiment_id": "e0006"
+        },
+        "exact_full_output_equal": true,
+        "sha256": "edd900733030274dfaaa8f204a480e9b60c35f9b32eecfe5cb65e69d07061a4e"
+      },
+      {
+        "options": {
+          "summary": "snapshot",
+          "life_min": 3,
+          "life_max": 3
+        },
+        "exact_full_output_equal": true,
+        "sha256": "9375b63d575efd48817f8044e5f3edb6db7e557db292f1fa50c2d3230538ff73"
+      },
+      {
+        "options": {
+          "summary": "change",
+          "windows": [
+            {
+              "label": "one",
+              "life_min": 1,
+              "life_max": 3
+            },
+            {
+              "label": "same",
+              "life_min": 1,
+              "life_max": 3
+            },
+            {
+              "label": "later",
+              "life_min": 4,
+              "life_max": 6
+            }
+          ]
+        },
+        "exact_full_output_equal": true,
+        "sha256": "399ca15b08f6073871276e8765f93749c92f067b7910c94b6b0fcbbe2c3a7e24"
+      }
+    ],
+    "timings": [
+      {
+        "name": "relations_200_cells_12_metrics",
+        "before_seconds": [
+          14.810862999991514,
+          13.28040669998154
+        ],
+        "before_sha256": [
+          "68ce7d7d38b3b685525c7ba6ffe7c7dde0e4d921df69e20bb316438e8496d259",
+          "68ce7d7d38b3b685525c7ba6ffe7c7dde0e4d921df69e20bb316438e8496d259"
+        ],
+        "after_seconds": [
+          7.479167899989989,
+          9.91655590001028
+        ],
+        "after_sha256": [
+          "68ce7d7d38b3b685525c7ba6ffe7c7dde0e4d921df69e20bb316438e8496d259",
+          "68ce7d7d38b3b685525c7ba6ffe7c7dde0e4d921df69e20bb316438e8496d259"
+        ],
+        "exact_full_output_equal": true,
+        "speedup_mean": 1.614837647627667
+      },
+      {
+        "name": "workbench_80_cells_12_metrics_defaults",
+        "before_seconds": [
+          11.69530640001176,
+          8.683774100005394
+        ],
+        "before_sha256": [
+          "85a3d5a94df7603fa363ec5d1a9ef6e67ae5254b3483009838c1568eb8e2d816",
+          "85a3d5a94df7603fa363ec5d1a9ef6e67ae5254b3483009838c1568eb8e2d816"
+        ],
+        "after_seconds": [
+          5.516938199987635,
+          6.765314199990826
+        ],
+        "after_sha256": [
+          "85a3d5a94df7603fa363ec5d1a9ef6e67ae5254b3483009838c1568eb8e2d816",
+          "85a3d5a94df7603fa363ec5d1a9ef6e67ae5254b3483009838c1568eb8e2d816"
+        ],
+        "exact_full_output_equal": true,
+        "speedup_mean": 1.6592299064016052
+      },
+      {
+        "name": "workbench_80_cells_12_metrics_network_only",
+        "before_seconds": [
+          5.516250899992883,
+          5.603677500010235
+        ],
+        "before_sha256": [
+          "29feff01ccc569b51d3d41d15a8fc7eec4b9bb1b62591ecc7fd8686179388166",
+          "29feff01ccc569b51d3d41d15a8fc7eec4b9bb1b62591ecc7fd8686179388166"
+        ],
+        "after_seconds": [
+          4.11775469998247,
+          4.1262166000087745
+        ],
+        "after_sha256": [
+          "29feff01ccc569b51d3d41d15a8fc7eec4b9bb1b62591ecc7fd8686179388166",
+          "29feff01ccc569b51d3d41d15a8fc7eec4b9bb1b62591ecc7fd8686179388166"
+        ],
+        "exact_full_output_equal": true,
+        "speedup_mean": 1.3488557875031575
+      }
+    ]
+  },
+  "actual_exact_equality": {
+    "analysis": {
+      "exact_full_output_equal": true,
+      "sha256": "0dd7cf351201a4a44c0c36b140f7219ed2878adc50f9e113ae54195cdd2f342c"
+    },
+    "evidence": {
+      "exact_full_output_equal": true,
+      "sha256": "3cf18a971e81aa867b241dd7db2ab5ca7d745dd5da7cee4fca76d55bfbf2957a"
+    }
+  },
+  "tests": {
+    "tests": 473,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "browser": {
+    "base": "http://127.0.0.1:8768",
+    "output": "C:\\Users\\LGES\\Documents\\Codex\\2026-10-21\\dlrj-x20\\work\\performance\\browser",
+    "checks": [
+      {
+        "name": "test output is not a directory link",
+        "passed": true,
+        "detail": "C:\\Users\\LGES\\Documents\\Codex\\2026-10-21\\dlrj-x20\\work\\performance\\browser"
+      },
+      {
+        "name": "dashboard is inside the exact test output",
+        "passed": true,
+        "detail": "C:\\Users\\LGES\\Documents\\Codex\\2026-10-21\\dlrj-x20\\work\\performance\\browser\\dashboard\\index.html"
+      },
+      {
+        "name": "port 8768 serves the dedicated test output",
+        "passed": true,
+        "detail": {
+          "status": 200
+        }
+      },
+      {
+        "name": "initial state returns 200 with a strong ETag",
+        "passed": true,
+        "detail": {
+          "status": 200,
+          "etag": "\"c25f932f5b89a9f7ddeac7a36825dc88fc5f0f7d9b7932bf39fb15f5dce6ec98\"",
+          "bytes": 2265941
+        }
+      },
+      {
+        "name": "state contains a live database workbench",
+        "passed": true,
+        "detail": null
+      },
+      {
+        "name": "conditional state returns 304 and no body",
+        "passed": true,
+        "detail": {
+          "status": 304,
+          "etag": "\"c25f932f5b89a9f7ddeac7a36825dc88fc5f0f7d9b7932bf39fb15f5dce6ec98\"",
+          "bytes": 0,
+          "value": null
+        }
+      },
+      {
+        "name": "network contains actual experiment nodes",
+        "passed": true,
+        "detail": 36
+      },
+      {
+        "name": "at least two metrics permit a pending checkbox edit",
+        "passed": true,
+        "detail": 4
+      },
+      {
+        "name": "one stable metric checkbox was deselected",
+        "passed": true,
+        "detail": {
+          "index": 0
+        }
+      },
+      {
+        "name": "edited controls are visibly pending",
+        "passed": true,
+        "detail": null
+      },
+      {
+        "name": "manual unchanged refresh keeps graph objects and pending controls",
+        "passed": true,
+        "detail": {
+          "nodeIdentity": true,
+          "graphMarkup": true,
+          "coverage": true,
+          "metrics": true,
+          "dirty": true
+        }
+      },
+      {
+        "name": "real automatic interval uses conditional GET",
+        "passed": true,
+        "detail": null
+      },
+      {
+        "name": "automatic unchanged poll keeps graph objects and pending controls",
+        "passed": true,
+        "detail": {
+          "nodeIdentity": true,
+          "graphMarkup": true,
+          "coverage": true,
+          "metrics": true,
+          "dirty": true
+        }
+      },
+      {
+        "name": "profile save succeeds in the owned server",
+        "passed": true,
+        "detail": {
+          "status": 200,
+          "id": "73efbc93eac08dd841f9"
+        }
+      },
+      {
+        "name": "profile was written only to the test output",
+        "passed": true,
+        "detail": null
+      },
+      {
+        "name": "profile change invalidates state ETag and returns 200",
+        "passed": true,
+        "detail": {
+          "status": 200,
+          "etag": "\"9a92d0065290b663954a8382c55a7d80092f3eb84eb1aadefdf5674366523f09\"",
+          "bytes": 2267217
+        }
+      },
+      {
+        "name": "saving a pending profile does not apply its analysis",
+        "passed": true,
+        "detail": null
+      },
+      {
+        "name": "profile-only state update keeps graph objects and pending controls",
+        "passed": true,
+        "detail": {
+          "nodeIdentity": true,
+          "graphMarkup": true,
+          "coverage": true,
+          "metrics": true,
+          "dirty": true
+        }
+      },
+      {
+        "name": "saved profile preserves the pending comparison choices",
+        "passed": true,
+        "detail": [
+          "local.chg_V_avg",
+          "local.dchg_V_avg",
+          "local.CE"
+        ]
+      },
+      {
+        "name": "new state becomes a body-free 304 on the next poll",
+        "passed": true,
+        "detail": {
+          "status": 304,
+          "etag": "\"9a92d0065290b663954a8382c55a7d80092f3eb84eb1aadefdf5674366523f09\"",
+          "bytes": 0,
+          "value": null
+        }
+      },
+      {
+        "name": "browser sent ETags after its first poll",
+        "passed": true,
+        "detail": [
+          {
+            "method": "GET",
+            "ifNoneMatch": null
+          },
+          {
+            "method": "GET",
+            "ifNoneMatch": "\"c25f932f5b89a9f7ddeac7a36825dc88fc5f0f7d9b7932bf39fb15f5dce6ec98\""
+          },
+          {
+            "method": "GET",
+            "ifNoneMatch": "\"c25f932f5b89a9f7ddeac7a36825dc88fc5f0f7d9b7932bf39fb15f5dce6ec98\""
+          },
+          {
+            "method": "GET",
+            "ifNoneMatch": "\"c25f932f5b89a9f7ddeac7a36825dc88fc5f0f7d9b7932bf39fb15f5dce6ec98\""
+          },
+          {
+            "method": "GET",
+            "ifNoneMatch": "\"9a92d0065290b663954a8382c55a7d80092f3eb84eb1aadefdf5674366523f09\""
+          },
+          {
+            "method": "GET",
+            "ifNoneMatch": null
+          },
+          {
+            "method": "GET",
+            "ifNoneMatch": "\"9a92d0065290b663954a8382c55a7d80092f3eb84eb1aadefdf5674366523f09\""
+          }
+        ]
+      },
+      {
+        "name": "aborted poll reports a recoverable connection error",
+        "passed": true,
+        "detail": {
+          "errorText": "net::ERR_FAILED"
+        }
+      },
+      {
+        "name": "failed poll keeps graph objects and pending controls",
+        "passed": true,
+        "detail": {
+          "nodeIdentity": true,
+          "graphMarkup": true,
+          "coverage": true,
+          "metrics": true,
+          "dirty": true
+        }
+      },
+      {
+        "name": "reconnect requests a complete 200 without stale ETag",
+        "passed": true,
+        "detail": {
+          "status": 200
+        }
+      },
+      {
+        "name": "complete reconnect preserves pending choices and populated graph",
+        "passed": true,
+        "detail": {
+          "coverage": true,
+          "metrics": true,
+          "dirty": true,
+          "nodes": true
+        }
+      },
+      {
+        "name": "reconnected client resumes conditional 304 polling",
+        "passed": true,
+        "detail": null
+      },
+      {
+        "name": "unchanged poll after reconnect keeps graph objects and pending controls",
+        "passed": true,
+        "detail": {
+          "nodeIdentity": true,
+          "graphMarkup": true,
+          "coverage": true,
+          "metrics": true,
+          "dirty": true
+        }
+      },
+      {
+        "name": "no JavaScript runtime errors",
+        "passed": true,
+        "detail": []
+      }
+    ],
+    "errors": [],
+    "stateResponses": [
+      {
+        "status": 200,
+        "etag": "\"c25f932f5b89a9f7ddeac7a36825dc88fc5f0f7d9b7932bf39fb15f5dce6ec98\""
+      },
+      {
+        "status": 304,
+        "etag": "\"c25f932f5b89a9f7ddeac7a36825dc88fc5f0f7d9b7932bf39fb15f5dce6ec98\""
+      },
+      {
+        "status": 304,
+        "etag": "\"c25f932f5b89a9f7ddeac7a36825dc88fc5f0f7d9b7932bf39fb15f5dce6ec98\""
+      },
+      {
+        "status": 200,
+        "etag": "\"9a92d0065290b663954a8382c55a7d80092f3eb84eb1aadefdf5674366523f09\""
+      },
+      {
+        "status": 200,
+        "etag": "\"9a92d0065290b663954a8382c55a7d80092f3eb84eb1aadefdf5674366523f09\""
+      },
+      {
+        "status": 304,
+        "etag": "\"9a92d0065290b663954a8382c55a7d80092f3eb84eb1aadefdf5674366523f09\""
+      }
+    ],
+    "stateRequests": [
+      {
+        "method": "GET",
+        "ifNoneMatch": null
+      },
+      {
+        "method": "GET",
+        "ifNoneMatch": "\"c25f932f5b89a9f7ddeac7a36825dc88fc5f0f7d9b7932bf39fb15f5dce6ec98\""
+      },
+      {
+        "method": "GET",
+        "ifNoneMatch": "\"c25f932f5b89a9f7ddeac7a36825dc88fc5f0f7d9b7932bf39fb15f5dce6ec98\""
+      },
+      {
+        "method": "GET",
+        "ifNoneMatch": "\"c25f932f5b89a9f7ddeac7a36825dc88fc5f0f7d9b7932bf39fb15f5dce6ec98\""
+      },
+      {
+        "method": "GET",
+        "ifNoneMatch": "\"9a92d0065290b663954a8382c55a7d80092f3eb84eb1aadefdf5674366523f09\""
+      },
+      {
+        "method": "GET",
+        "ifNoneMatch": null
+      },
+      {
+        "method": "GET",
+        "ifNoneMatch": "\"9a92d0065290b663954a8382c55a7d80092f3eb84eb1aadefdf5674366523f09\""
+      }
+    ],
+    "profileName": "QA Conditional Poll 2026-10-22T04:21:27.581Z",
+    "profileId": "73efbc93eac08dd841f9"
+  },
+  "implemented": [
+    {
+      "area": "DB 읽기",
+      "change": "검증된 cycle 표를 채널 처리 안에서 재사용하고, 코드 해시는 새로고침당 한 번씩 계산한다.",
+      "evidence": "cycle 표 읽기 72→36회, 코드 해시 108→2회. 파생 캐시가 없는 상태의 36채널 묶음 생성 11.72→6.60초.",
+      "files": [
+        "battery_insight/database_workbench.py",
+        "battery_insight/workbench_data.py",
+        "battery_insight/metric_packs.py"
+      ]
+    },
+    {
+      "area": "불가능한 계산의 조기 종료",
+      "change": "전류·mode가 없는 단일 전압 프로파일은 스키마로 CV 계산 불가를 판단한다. 파일 SHA 검증은 유지한다.",
+      "evidence": "불필요한 Silver 디코딩 537,048→0행. 필요한 원곡선 조회와 모든 저장 행은 유지된다.",
+      "files": [
+        "battery_insight/workbench_data.py"
+      ]
+    },
+    {
+      "area": "상관·구간 분석",
+      "change": "상관 기능을 끄면 계산 자체를 생략한다. 셀별 지표 요약과 동일 관측 구간 그래프를 요청 안에서 재사용한다.",
+      "evidence": "실제 데이터에서 관계 그래프 계산 2→1회. 합성 200셀·12지표 관계 분석 평균 14.05→8.70초.",
+      "files": [
+        "battery_insight/relations.py",
+        "battery_insight/workbench_analysis.py"
+      ]
+    },
+    {
+      "area": "설계·조건 비교",
+      "change": "비교군과 공통 지표를 색인화하고, 통제 비교는 허용되는 비교군·기준 실험의 후보만 만든다.",
+      "evidence": "비교 결과를 제거하지 않으면서 반복 탐색을 줄였다. 합성 결측·반복셀·기준실험 등 6개 시나리오 전체 결과 동일.",
+      "files": [
+        "battery_insight/design_relations.py",
+        "battery_insight/workbench_analysis.py"
+      ]
+    },
+    {
+      "area": "화면 확인 요청",
+      "change": "ETag로 변경 없는 상태를 304 응답하며 직렬화와 그래프 DOM 재생성을 생략한다. 오류·외부 프로필 수정·복구는 새 상태를 전달한다.",
+      "evidence": "변경 없는 응답 본문 2,265,966→0바이트. 실제 브라우저에서 선택 유지·오류 후 재시도·프로필 변경을 확인했다.",
+      "files": [
+        "battery_insight/workbench_server.py",
+        "battery_insight/assets/workbench.js"
+      ]
+    }
+  ],
+  "next_steps": [
+    {
+      "priority": "P1",
+      "area": "변경된 실험만 갱신",
+      "finding": "watch는 입력이 같아도 정해진 주기마다 전체 묶음·분석·HTML을 다시 만든다. 304는 이 백그라운드 재계산을 없애지 않는다.",
+      "proposal": "입력·등록표·설정·코드 revision별 의존성을 기록하고 변경된 채널과 관련 비교군만 무효화한다. 무변경이면 이전 분석과 게시 시각을 유지한다.",
+      "acceptance": "mtime·크기를 복원한 실제 내용 변경과 파일 손상을 계속 감지하고, 변경된 채널 추가·삭제·조건 변경의 결과가 전체 재계산과 정확히 같아야 한다."
+    },
+    {
+      "priority": "P1",
+      "area": "큰 실험 집합의 응답 크기",
+      "finding": "모든 실험 쌍과 지표 기여 상세를 생성·전송하므로 계산과 응답이 대략 O(N²·M)로 커진다. 200개 실험이면 19,900쌍이다.",
+      "proposal": "쌍 목록에 서버 페이지 처리를 적용하고 선택한 연결의 기여지표만 지연 조회한다. 화면용 상위 K개 연결은 별도 표시 옵션으로 두고 전체 비교·내보내기는 유지한다.",
+      "acceptance": "필터·정렬·전체 다운로드 결과가 기존과 같고, 표시 제한이 과학적 비교 대상이나 그룹 평균을 바꾸지 않아야 한다."
+    },
+    {
+      "priority": "P2",
+      "area": "네이티브 raw 파서",
+      "finding": "대표 Cycle 85,809행 파싱 9.83초. 프로파일에서 필드 정규식 4,376,259회, datetime 변환 85,809회가 확인됐다.",
+      "proposal": "51개 정수 필드를 엄격하게 배치 검증·변환하고, 사용하지 않는 datetime 문자열은 필요한 단계까지 생성을 늦춘다. ZIP schedule 검색도 채널 색인으로 공유한다.",
+      "acceptance": "기존 703,911행의 값·단위·행 순서·출처 전수 동등성, 정수 overflow·손상 행·step 경계 회귀를 통과한 뒤 적용한다."
+    },
+    {
+      "priority": "P2",
+      "area": "트랜잭션 복사",
+      "finding": "실제 개선 후 cProfile에서 rollback 준비에 약 1.88초, deepcopy에 약 0.96초가 들었다. 계측 오버헤드가 포함된다.",
+      "proposal": "불변 분석 스냅샷과 변경 파일만 교체하는 트랜잭션으로 전체 메모리·HTML 백업을 줄인다.",
+      "acceptance": "저장 실패·보고서 실패·등록 실패를 주입해 파일과 화면 상태가 완전히 복구되는지 검증한다. 현재 rollback 보장은 유지한다."
+    },
+    {
+      "priority": "P2",
+      "area": "일반 CSV/Parquet 파이프라인 캐시",
+      "finding": "pipeline.code_fingerprint가 패키지 전체 Python 파일을 포함하므로 화면 전용 변경도 generic raw 처리 캐시를 무효화할 수 있다. 실제 native DB 경로와는 별개다.",
+      "proposal": "수치 계산 의존 코드의 fingerprint와 전체 배포 코드 provenance를 분리한다. 의존 목록 누락을 막는 검사를 함께 둔다.",
+      "acceptance": "화면 변경은 raw 재처리를 유발하지 않고, 파서·단위·지표·진단 코드 변경은 반드시 관련 결과를 다시 계산해야 한다."
+    },
+    {
+      "priority": "P3",
+      "area": "압축·메모리",
+      "finding": "전체 새로고침의 Python 최고 메모리는 약 33.8 MiB로 전후 거의 같다. 압축 수준과 대규모 raw import 메모리는 이번 벤치마크 범위 밖이다.",
+      "proposal": "원본과 동일한 전압 프로파일로 Zstd 수준별 크기·쓰기/읽기 시간을 비교한다. full_fields 외에는 중복 원시 필드 materialization을 줄이는 방안을 검증한다.",
+      "acceptance": "시간·전압·용량과 식별자·출처를 정밀도 손실 없이 보존해야 한다. 이번에는 저장 정책이나 기존 버전을 변경하지 않는다."
+    }
+  ],
+  "measurement_notes": [
+    "실제 데이터: 36채널, 관측값 2,944개, 전기화학 연결 116개. 분석·원곡선 전체 JSON을 값이나 메타데이터 제외 없이 비교했다.",
+    "전체 새로고침은 각각 3회 중앙값, 합성 관계 분석은 각각 2회 평균이다. IO 카운터 실험은 파생 캐시가 없는 상태에서 각 1회 측정했다.",
+    "같은 컴퓨터에서 Arrow/BLAS 작업자 1개로 실행했다. OS 파일 캐시를 비우지 않았으며 실행 부하에 따라 시간은 달라진다.",
+    "메모리는 tracemalloc이 추적하는 Python 할당의 최고치이며 Arrow·브라우저·프로세스 전체 RSS를 뜻하지 않는다.",
+    "HTTP 캐시는 마지막 직렬화 응답 1개를 메모리에 추가 유지한다(이번 데이터 약 2.27 MB). 표의 새로고침 메모리 측정은 별도 HTTP 캐시 생성 이전이므로 이 비용을 포함하지 않는다.",
+    "초기 직렬화 마이크로벤치마크는 전처리 범위가 달라 전후 속도 비교에서 제외했다. 304 수치는 HTTP 본문만이며 헤더는 포함하지 않는다.",
+    "원본 파일과 실제 DB의 측정값은 변경하지 않았다. 원본 재수집·압축률 변경·데이터 삭제는 이번 개선에 포함하지 않는다."
+  ]
+}

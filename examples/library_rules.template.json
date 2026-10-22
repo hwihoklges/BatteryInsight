@@ -1,0 +1,7 @@
+[
+  {
+    "rule_id": "REVIEWED_CYCLE_FOLDER",
+    "path_glob": "Cycle/*",
+    "metadata": {"test_type": "Cycle"}
+  }
+]

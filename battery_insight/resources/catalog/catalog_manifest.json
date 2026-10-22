@@ -1,0 +1,58 @@
+{
+  "total_rows": 223,
+  "metadata_rows": 0,
+  "unit_status_counts": {
+    "needs_review": 159,
+    "verified_source": 64
+  },
+  "by_namespace": {
+    "cyclediag": 200,
+    "studio_legacy": 23
+  },
+  "by_group": {
+    "기타·정의 검토": 12,
+    "미분·피크·cliff": 83,
+    "에너지": 4,
+    "용량·CC/CV·유지율": 8,
+    "저항·DCIR": 64,
+    "전압·곡선 형태": 22,
+    "효율": 5,
+    "휴지·OCV·자기방전": 25
+  },
+  "aim_scope": "unverified: actual AIM specification not identified",
+  "scope": "declared core, static literal references, legacy declarations, and optional actual export headers; dynamic runtime completeness not guaranteed",
+  "machine_learning": "not_required_not_executed",
+  "raw_data_analysis_executed": false,
+  "pruning": {
+    "policy_version": "lifetime_representatives_v1",
+    "before": 589,
+    "primary": 223,
+    "removed_duplicates": 108,
+    "support_only": 150,
+    "review_required": 108,
+    "decision_counts": {
+      "keep": 223,
+      "support_only": 150,
+      "remove_duplicate": 108,
+      "review_required": 108
+    },
+    "first_removal_basis_counts": {
+      "baseline_representation": 56,
+      "family_representative": 29,
+      "implementation_replaced": 17,
+      "declared_identity": 6
+    },
+    "original_values_modified": false,
+    "source_code_modified": false,
+    "assumptions": "Existing registry families are a reporting policy, not a newly measured proof of equivalence.",
+    "protected_axes": [
+      "SOC",
+      "pulse_time",
+      "charge_discharge",
+      "peak_index",
+      "voltage_band"
+    ],
+    "registry_sha256": "007a7db8fdebe252fb5e6084830b602cde822f00cca502548bf187eefac522ad",
+    "policy_code_sha256": "f76c0ecfff94f728a681a65c91bc7b3b566dc9306662af6cf803c8c9162b09da"
+  }
+}

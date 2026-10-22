@@ -1,0 +1,56 @@
+{
+  "synthetic_only": true,
+  "real_raw_analysis_executed": false,
+  "raw_files": 12,
+  "experiments": 12,
+  "representative_metrics": 5,
+  "relationship_views": [
+    "electrode_design",
+    "electrochemical_metrics"
+  ],
+  "design_experiments": 12,
+  "design_fields": 12,
+  "design_input_policy": "Explicit registration; never inferred from raw or chemistry presets.",
+  "score_combination": "None; each view is calculated independently.",
+  "observed_window": [
+    1.0,
+    8.0
+  ],
+  "calculated_edges_before_display_threshold": {
+    "design": 66,
+    "electrochemical": 66
+  },
+  "display_threshold_default": 0.65,
+  "processing_failures": [],
+  "second_update_reused": 12,
+  "browser_validation": {
+    "passed": true,
+    "design_nodes": 12,
+    "design_fields": 12,
+    "electrochem_nodes": 12,
+    "electrochem_metrics": 5,
+    "console_errors": [],
+    "checks": [
+      "default design map",
+      "design categorical/composition/unit rendering",
+      "composition basis labels",
+      "design edge weighted contributions",
+      "separate crossview score columns",
+      "design feature CSV types",
+      "same experiment across mode switches",
+      "electrochem radar and correlation",
+      "mode-correct panels",
+      "search",
+      "unconfigured design legacy fallback",
+      "single-cohort legacy transition",
+      "pending file Korean reason",
+      "mobile no overflow",
+      "HTTP 10-second polling updates both graphs",
+      "new experiment appears in both maps",
+      "selected ID and threshold preserved",
+      "KST rendering"
+    ]
+  },
+  "live_watch_started_for_real_data": false,
+  "setup_required": "Map actual raw columns/units, register tests and measured design values, then run update or watch."
+}

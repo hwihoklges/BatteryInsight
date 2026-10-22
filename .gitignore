@@ -1,0 +1,66 @@
+# Python and local environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+*.egg-info/
+.coverage
+htmlcov/
+
+# Build products and release archives
+/dist/
+/build/pyinstaller/
+*.exe
+*.dll
+*.pyd
+*.zip
+*.log
+*.tmp
+
+# Local projects, measurement files, and generated databases
+/work/
+/data/
+/raw_data/
+/raw_database/
+/projects/
+*.cyc
+*.cts
+*.nda
+*.ndax
+*.res
+*.mpt
+*.mpr
+*.parquet
+*.sqlite
+*.sqlite3
+*.sqlite3-*
+*.db
+*.db-*
+*.csv
+*.xlsx
+*.xls
+*.xlsm
+*.ppt
+*.pptx
+*.pdf
+
+# Versioned metric definitions, blank templates, and synthetic examples
+!/catalog/**/*.csv
+!/catalog/**/*.parquet
+!/battery_insight/resources/catalog/**/*.csv
+!/battery_insight/resources/catalog/**/*.parquet
+!/examples/**/*.csv
+!/demo_knowledge/knowledge_review/records.csv
+!/demo_knowledge/*.pptx
+
+# Credentials and machine-local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.DS_Store
+Thumbs.db

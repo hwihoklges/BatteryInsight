@@ -1,0 +1,81 @@
+{
+  "note_ko": "비교 목적에 맞게 선택하여 design.fields에 추가/교체한다. 같은 group의 대체 표현은 동시에 선택하지 않는다. scale은 물리 허용기준이 아닌 조정 가능한 비교 눈금이다.",
+  "fields": [
+    {
+      "field_id": "cathode_active_mass_loading_mg_cm2",
+      "label": "양극 활물질 질량 로딩 · 단면/집전체 제외",
+      "kind": "numeric",
+      "unit": "mg/cm2",
+      "scale": 5,
+      "group": "cathode_loading",
+      "weight": 1
+    },
+    {
+      "field_id": "anode_active_mass_loading_mg_cm2",
+      "label": "음극 활물질 질량 로딩 · 단면/집전체 제외",
+      "kind": "numeric",
+      "unit": "mg/cm2",
+      "scale": 1,
+      "group": "anode_loading",
+      "weight": 1
+    },
+    {
+      "field_id": "cathode_pressed_density_g_cm3",
+      "label": "압착 후 양극 코팅층 밀도",
+      "kind": "numeric",
+      "unit": "g/cm3",
+      "scale": 0.5,
+      "group": "cathode_density",
+      "weight": 1
+    },
+    {
+      "field_id": "anode_pressed_density_g_cm3",
+      "label": "압착 후 음극 코팅층 밀도",
+      "kind": "numeric",
+      "unit": "g/cm3",
+      "scale": 0.5,
+      "group": "anode_density",
+      "weight": 1
+    },
+    {
+      "field_id": "electrolyte_layer_areal_mass_mg_cm2",
+      "label": "전해질막 면적 질량",
+      "kind": "numeric",
+      "unit": "mg/cm2",
+      "scale": 1,
+      "group": "electrolyte_layer_mass",
+      "weight": 1
+    },
+    {
+      "field_id": "electrolyte_layer_pressed_thickness_um",
+      "label": "압착 후 전해질막 두께",
+      "kind": "numeric",
+      "unit": "um",
+      "scale": 10,
+      "group": "electrolyte_layer_thickness",
+      "weight": 1
+    },
+    {
+      "field_id": "electrolyte_layer_material",
+      "label": "전해질막 재료",
+      "kind": "categorical",
+      "unit": "category",
+      "group": "electrolyte_layer_material",
+      "weight": 1
+    },
+    {
+      "field_id": "anode_active_blend",
+      "label": "음극 활물질 내부 배합",
+      "kind": "composition",
+      "unit": "wt%",
+      "group": "anode_active_blend",
+      "weight": 1,
+      "composition_basis": "active_material_total",
+      "components": [
+        "anode_silicon_wt_pct_of_active",
+        "anode_graphite_wt_pct_of_active",
+        "anode_other_wt_pct_of_active"
+      ]
+    }
+  ]
+}

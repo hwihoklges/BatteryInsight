@@ -1,0 +1,26 @@
+{
+  "records": [
+    {
+      "record_id": "",
+      "status": "draft",
+      "sample_id": "",
+      "sample_name": "",
+      "experiment_name": "",
+      "namespace": "",
+      "test_date": "",
+      "date_kind": "unknown",
+      "set_no": "",
+      "manufacture_date": "",
+      "report_date": "",
+      "test_end_date": "",
+      "test_type": "",
+      "rpt_stage": "",
+      "channel_id": "",
+      "physical_cell_id": "",
+      "design_id": "",
+      "batch_id": "",
+      "evidence_ids": [],
+      "metadata": {}
+    }
+  ]
+}

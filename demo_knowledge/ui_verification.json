@@ -1,0 +1,101 @@
+{
+  "synthetic_only": true,
+  "checks": [
+    {
+      "name": "fixture contains synthetic data only",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "raw measurements and original database remain unchanged",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "one graph point per raw test",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "reviewed sample names label the graph",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "inspector exposes slide experiment and sample identity",
+      "passed": true,
+      "detail": "셀Cell-A시험t0프로토콜P1화학계NMC온도25 °C비교군전체 설계장표 실험합성 예시 · RPT BOL 압력 비교샘플 IDSynthetic-N3-A시험 날짜 · 세트2026-10-22 · 001장표 근거7개 · 아래 근거 위치에서 확인등록 버전synthetic-record-0 / 1근거 위치 · 7개 펼치기문서 1slide:1/shape:3/table:r2:c2slide:1/shape:3/table:r2:c5slide:1/shape:3/table:r2:c1slide:1/shape:2slide:1/shape:3/table:r2:c3slide:1/shape:3/table:r2:c4slide:1/shape:3/table:r2:c6"
+    },
+    {
+      "name": "start date and zero-preserving set number visible",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "exact slide and table provenance visible",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "long provenance starts collapsed",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "exact provenance can be expanded",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "physical cell alias was explicitly registered",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "electrochemical graph retains both linked samples",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "second sample retains a distinct reviewed record and cell",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "workbench metadata fits mobile width",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "review page identifies synthetic presentation",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "review page shows two reviewed sample records",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "review preserves slide table location and original text",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "review page distinguishes proposals from confirmation",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "review tables scroll within mobile page",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "no JavaScript runtime errors",
+      "passed": true,
+      "detail": []
+    }
+  ],
+  "errors": []
+}

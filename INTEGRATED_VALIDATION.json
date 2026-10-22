@@ -1,0 +1,144 @@
+{
+  "application": "BatteryInsight",
+  "version": "3.0.0",
+  "exe_sha256": "aea847f19a83f44ba87a48fc941fdfb8d5d80c36a8346c474e561214fa8a9e3e",
+  "exe_bytes": 105449495,
+  "tests": {
+    "regression": {
+      "tests": "620",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0"
+    },
+    "final_integration": {
+      "tests": "26",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0"
+    }
+  },
+  "frozen_execution": {
+    "status": "passed",
+    "scope": "Same Windows host; child PATH has no Python and no PYTHON* variables. Not a clean-PC or firewall-isolation test.",
+    "summary": {
+      "actual_files": 9,
+      "actual_records": 606756,
+      "selftest_checks": 17,
+      "gui_checks": 5,
+      "native_input_only": true,
+      "llm_calls": 0,
+      "unit_declaration_in_qa": "Synthetic user-declared units for workflow testing, not manufacturer unit validation"
+    },
+    "selftest_checks": {
+      "native_conversion_and_auto_registration": true,
+      "all_nineteen_records_preserved": true,
+      "filename_hints_not_confirmed": true,
+      "unconfirmed_units_not_scaled": true,
+      "native_values_view_available": true,
+      "unit_confirmed_profile_metrics": true,
+      "same_physical_cell_not_double_counted": true,
+      "modules_can_be_disabled": true,
+      "registration_roundtrip": true,
+      "reviewed_rule_classification": true,
+      "document_candidates_from_reviewed_keys": true,
+      "document_link_confirmed": true,
+      "document_revision_invalidates_link": true,
+      "stale_document_link_requires_review": true,
+      "repeat_reuses_all_native_files": true,
+      "source_unchanged": true,
+      "project_local_data_portable": true
+    },
+    "gui_checks": {
+      "hidden": true,
+      "four_integrated_tabs": true,
+      "no_llm_configuration": true,
+      "idle": true,
+      "project_selected": true
+    },
+    "checks": {
+      "no_python_on_child_path": true,
+      "native_values_exact": true,
+      "automatic_parquet_catalogue": true,
+      "same_exe_opens_comparison_pipeline": true,
+      "pptx_pdf_excel_readers_work_offline": true,
+      "all_native_results_reused": true,
+      "actual_originals_unchanged": true
+    }
+  },
+  "browser": {
+    "status": "passed",
+    "checks": {
+      "exit_zero": true,
+      "html_rendered": true,
+      "no_javascript_error": true,
+      "native_axis_labels": true,
+      "source_rows_displayed": true,
+      "interactive_local_workbench": true
+    }
+  },
+  "runtime_audit": {
+    "status": "passed",
+    "scope": "Static Analysis TOC and PE imports; Windows system DLLs excluded. Runtime tested separately.",
+    "analysis_sha256": "5491d4ac1d5b4b1e30a881bae3ebbb5df9dda7f066c1c55e7ae4098844b742f3",
+    "binary_files": 237,
+    "python_modules": 2174,
+    "dll_references": 2220,
+    "missing_non_os_dlls": [],
+    "external_vc_runtime": [],
+    "runtime_distributions": [
+      "Jinja2",
+      "MarkupSafe",
+      "charset-normalizer",
+      "et_xmlfile",
+      "fonttools",
+      "lxml",
+      "numpy",
+      "openpyxl",
+      "pandas",
+      "pillow",
+      "pyarrow",
+      "pyinstaller",
+      "pypdf",
+      "python-dateutil",
+      "python-pptx",
+      "pywin32",
+      "scipy",
+      "six",
+      "threadpoolctl",
+      "typing_extensions",
+      "tzdata",
+      "xlsxwriter"
+    ],
+    "uncovered_licences": [],
+    "unresolved_distributions": [],
+    "ml_modules_present": []
+  },
+  "embedded_artifacts_verified": 63,
+  "build": {
+    "python": "3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]",
+    "platform": "Windows-11-10.0.26100-SP0",
+    "architecture_bits": 64,
+    "dependencies": {
+      "numpy": "2.4.6",
+      "pandas": "3.0.3",
+      "pyarrow": "24.0.0",
+      "scipy": "1.17.1",
+      "openpyxl": "3.1.5",
+      "python-pptx": "1.0.2",
+      "pypdf": "6.18.0",
+      "Pillow": "12.2.0",
+      "pyinstaller": "6.21.0",
+      "pyinstaller-hooks-contrib": "2026.6"
+    },
+    "network_used_by_builder": false,
+    "format": "single-file windowed EXE"
+  },
+  "scope": [
+    "Single offline Windows x64 executable; no Python installation/API key required",
+    "Native CYC 4100 -> all-record Parquet -> catalogue -> reviewed classification -> document links -> existing workbench",
+    "Project-local converted Parquet paths are relative; external folders remain references",
+    "No LLM calls or ML training; official AIM formulas remain unconfigured unless verified export supplied",
+    "Native units require confirmation before SI profile metrics; current/CC/CV-dependent metrics require richer inputs",
+    "Source regression suite and final integration suite overlap and are not additive"
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "batch_rows": 65536,
+  "storage": {
+    "profile": "voltage_profiles",
+    "compression_level": 19,
+    "row_group_size": 131072,
+    "keep_cycles": null,
+    "keep_steps": null,
+    "gold_csv": false
+  },
+  "features": {
+    "assume_complete_bidirectional_cycles": false,
+    "complete_end_flags": ["time_end", "voltage_end", "current_end", "step_complete", "soc_end", "next_step"]
+  },
+  "sources": [
+    {
+      "path": "C:/your_raw/rpt.zip",
+      "format": "pne_restore_51_smallcell_v1",
+      "dataset_id": "rpt_bol",
+      "test_type": "RPT",
+      "rpt_stage": "BOL",
+      "metadata": {},
+      "channel_overrides": {}
+    }
+  ]
+}

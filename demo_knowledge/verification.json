@@ -1,0 +1,27 @@
+{
+  "synthetic_only": true,
+  "actual_user_documents_imported": 0,
+  "actual_raw_database_modified": false,
+  "source_presentation": "C:\\Users\\LGES\\Documents\\Codex\\2026-10-21\\dlrj-x20\\work\\knowledge_demo\\합성 예시_압력 비교.pptx",
+  "extracted_evidence": 20,
+  "reviewed_records": 2,
+  "confirmed_links": 2,
+  "raw_tests": 2,
+  "metric_observations": 18,
+  "raw_database_bytes_unchanged": true,
+  "observation_values_unchanged": true,
+  "immutable_experiment_ids": [
+    "e0",
+    "e1"
+  ],
+  "physical_aliases_explicit": [
+    "Cell-A",
+    "Cell-B"
+  ],
+  "sample_labels": [
+    "N3-A",
+    "N3-B"
+  ],
+  "review_page": "C:\\Users\\LGES\\Documents\\Codex\\2026-10-21\\dlrj-x20\\work\\knowledge_demo\\knowledge_review\\index.html",
+  "workbench_page": "C:\\Users\\LGES\\Documents\\Codex\\2026-10-21\\dlrj-x20\\work\\knowledge_demo\\result\\dashboard\\index.html"
+}

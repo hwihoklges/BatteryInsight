@@ -1,0 +1,93 @@
+<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>실험·샘플 DB 검토</title><style>body{font-family:system-ui,'Malgun Gothic',sans-serif;background:#f3f6f8;color:#173044;line-height:1.65;margin:0}main{max-width:1200px;margin:auto;padding:30px 22px}h1{line-height:1.35;font-size:29px}h2{margin-top:32px}a{color:#006b84}.card{background:white;border:1px solid #dce5eb;border-radius:12px;padding:20px;margin:16px 0}.scroll{overflow:auto}table{border-collapse:collapse;width:100%;font-size:14px}th,td{text-align:left;vertical-align:top;border-bottom:1px solid #dde5ea;padding:10px;overflow-wrap:anywhere}th{background:#eaf1f5}code{background:#eaf1f5;padding:2px 5px;overflow-wrap:anywhere}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#edf3f6;padding:14px}.muted{color:#526b7c}.flow{display:flex;flex-wrap:wrap;gap:10px}.flow>span{background:#e2eff0;padding:12px;border-radius:8px}input{padding:10px;width:min(100%,500px)}.badge{background:#fff0cf;padding:2px 7px;border-radius:4px}li{margin:7px 0}</style><main><h1>장표 기반 실험·샘플 등록 검토</h1><p>문서 1개 · 근거 20개 · 실험/샘플 기록 2개 · 확정 2개</p><p><a href="knowledge_snapshot.json">전체 근거·등록 JSON</a> · <a href="records.csv">등록표 CSV</a> · <a href="intake_guide.html">필요 정보·작업 순서</a></p><div class="card"><b>읽기 전용 검토표</b><p>이 화면은 자동 확정하지 않습니다. 근거를 확인한 기록과 raw 연결 검토 이벤트를 각각 등록해야 작업실에 반영됩니다. CSV는 표시용이며 원문과 ID의 기준은 JSON입니다. Excel에서 세트번호를 텍스트로 열어 선행 0을 보존하세요.</p></div><h2>문서</h2><div class="scroll"><table><thead><tr><th>문서 ID</th><th>파일명</th><th>상태</th><th>문제·검토 필요</th></tr></thead><tbody><tr><td>doc_4d316ca788bfcee012003df0</td><td>합성 예시_압력 비교.pptx</td><td>complete</td><td>[{&quot;code&quot;: &quot;layout_not_interpreted&quot;, &quot;message&quot;: &quot;Slide positions, arrows, colors and table headers do not automatically establish experiment/sample relationships.&quot;}]</td></tr></tbody></table></div><h2>실험·샘플 기록</h2><div class="scroll"><table><thead><tr><th>기록 / 버전</th><th>실험 / 샘플</th><th>날짜 / 의미</th><th>번호 범위 / 세트</th><th>시험 / 시점 / 채널</th><th>셀 / 설계 / 배치</th><th>상태 / 근거</th></tr></thead><tbody><tr><td>synthetic-record-0 / 1</td><td>합성 예시 · RPT BOL 압력 비교 / N3-A</td><td>2026-10-22 / test_start</td><td>synthetic-pressure-demo / 001</td><td>RPT / BOL / None</td><td>Cell-A / D1 / B1</td><td>confirmed / ev_6baf77cf58301e63e40d4897, ev_a1e565e3d5eb6180d6b4151f, ev_b29f89e3dc89a194de8a1887, ev_b2e59d7110f7e9b0427d52ee, ev_c3df785bfee17e47c1f77c96, ev_d3b85fff15a2cf1094d50f07, ev_e0a5a4cbc0a695b57cc72b5f</td></tr><tr><td>synthetic-record-1 / 1</td><td>합성 예시 · RPT BOL 압력 비교 / N3-B</td><td>2026-10-22 / test_start</td><td>synthetic-pressure-demo / 001</td><td>RPT / BOL / None</td><td>Cell-B / D1 / B1</td><td>confirmed / ev_288c462097cf43b809f5562b, ev_58a5cadb461aa0946fc074b3, ev_5a86ce65c098a7bf2639cca6, ev_98e1bb24c2c590f1b18d86f1, ev_b2e59d7110f7e9b0427d52ee, ev_e219678d30ae139c05b06c3a, ev_eee11e74f59eafb0c198190b</td></tr></tbody></table></div><h2>다음에 확인할 사항</h2><p>등록된 기록의 기본 연결 키에 누락된 항목이 없습니다. 아직 기록이 없다면 첫 장표부터 추가하세요.</p><h2>raw 연결 후보</h2><p>후보가 하나여도 연결 확정 전입니다. 상세 키·후보·거절 사유는 <a href="proposals.json">후보 JSON</a>에 보존합니다.</p><pre>{
+  &quot;schema_version&quot;: &quot;raw_link_proposals_v1&quot;,
+  &quot;generated_at&quot;: &quot;2026-10-22T04:46:01.901833+00:00&quot;,
+  &quot;database_path&quot;: &quot;C:\\Users\\LGES\\Documents\\Codex\\2026-10-21\\dlrj-x20\\work\\knowledge_demo\\fixture\\database&quot;,
+  &quot;database_manifest_sha256&quot;: &quot;56b90ad4c4d58488095ee86a84ab5acf0d518649c01fc7973e76fd0961f21061&quot;,
+  &quot;experiments_csv_sha256&quot;: &quot;9951cf147878fb5a461cb68201ec46262dd735dbf64b07128d9c2588dcad564b&quot;,
+  &quot;raw_keys_sha256&quot;: &quot;6076e966f448164726faafa05582bad36560c7c1c74e0538305b2e202cc99410&quot;,
+  &quot;records_snapshot_sha256&quot;: &quot;9299c4d3e952fdad0d53b84bda34c0eb8fef81c87c0198eddc26d5006ee89caa&quot;,
+  &quot;raw_keys_source&quot;: {
+    &quot;path&quot;: &quot;C:\\Users\\LGES\\Documents\\Codex\\2026-10-21\\dlrj-x20\\work\\knowledge_demo\\raw_keys.json&quot;,
+    &quot;sha256&quot;: &quot;17a38c0eb91d6bde3896d9be8747a0713a3dd0ecdd828c6ebf0b84ba1030ca55&quot;
+  },
+  &quot;automatic_links_applied&quot;: 0,
+  &quot;rows&quot;: [
+    {
+      &quot;experiment_id&quot;: &quot;e0&quot;,
+      &quot;source_id&quot;: &quot;source0&quot;,
+      &quot;source_sha256&quot;: &quot;962b36cf1312ec97ed787c997a4e6de5800f8705e3b7d9f70407624c73021f82&quot;,
+      &quot;test_type&quot;: &quot;RPT&quot;,
+      &quot;source_channel&quot;: &quot;&quot;,
+      &quot;source_container&quot;: &quot;C:\\Users\\LGES\\Documents\\Codex\\2026-10-21\\dlrj-x20\\work\\knowledge_demo\\fixture\\original_folder&quot;,
+      &quot;raw_keys&quot;: {
+        &quot;test_date&quot;: &quot;2026-10-22&quot;,
+        &quot;date_kind&quot;: &quot;test_start&quot;,
+        &quot;namespace&quot;: &quot;synthetic-pressure-demo&quot;,
+        &quot;set_no&quot;: &quot;001&quot;,
+        &quot;sample_name&quot;: &quot;N3-A&quot;,
+        &quot;channel_id&quot;: &quot;&quot;,
+        &quot;test_type&quot;: &quot;RPT&quot;,
+        &quot;rpt_stage&quot;: &quot;BOL&quot;
+      },
+      &quot;candidates&quot;: [
+        {
+          &quot;record_id&quot;: &quot;synthetic-record-0&quot;,
+          &quot;expected_record_revision&quot;: 1,
+          &quot;expected_record_content_hash&quot;: &quot;1b34e4717f0d15cc7304175e534e6ad71dd8fa5362e97683ef7595d5405e20ca&quot;,
+          &quot;sample_id&quot;: &quot;Synthetic-N3-A&quot;,
+          &quot;sample_name&quot;: &quot;N3-A&quot;,
+          &quot;experiment_name&quot;: &quot;합성 예시 · RPT BOL 압력 비교&quot;
+        }
+      ],
+      &quot;conflicts&quot;: [
+        {
+          &quot;record_id&quot;: &quot;synthetic-record-1&quot;,
+          &quot;fields&quot;: [
+            &quot;sample_name&quot;
+          ]
+        }
+      ],
+      &quot;missing_keys&quot;: [],
+      &quot;status&quot;: &quot;unique_candidate&quot;
+    },
+    {
+      &quot;experiment_id&quot;: &quot;e1&quot;,
+      &quot;source_id&quot;: &quot;source1&quot;,
+      &quot;source_sha256&quot;: &quot;52a0b526b63d33275a60cabd766cdefa7d2e12b3356e7a0db0a28db4fc8a56c3&quot;,
+      &quot;test_type&quot;: &quot;RPT&quot;,
+      &quot;source_channel&quot;: &quot;&quot;,
+      &quot;source_container&quot;: &quot;C:\\Users\\LGES\\Documents\\Codex\\2026-10-21\\dlrj-x20\\work\\knowledge_demo\\fixture\\original_folder&quot;,
+      &quot;raw_keys&quot;: {
+        &quot;test_date&quot;: &quot;2026-10-22&quot;,
+        &quot;date_kind&quot;: &quot;test_start&quot;,
+        &quot;namespace&quot;: &quot;synthetic-pressure-demo&quot;,
+        &quot;set_no&quot;: &quot;001&quot;,
+        &quot;sample_name&quot;: &quot;N3-B&quot;,
+        &quot;channel_id&quot;: &quot;&quot;,
+        &quot;test_type&quot;: &quot;RPT&quot;,
+        &quot;rpt_stage&quot;: &quot;BOL&quot;
+      },
+      &quot;candidates&quot;: [
+        {
+          &quot;record_id&quot;: &quot;synthetic-record-1&quot;,
+          &quot;expected_record_revision&quot;: 1,
+          &quot;expected_record_content_hash&quot;: &quot;b0f0ca6ae54939dbecaaabe04fa0836037debb573d6139f632b321debd54fbae&quot;,
+          &quot;sample_id&quot;: &quot;Synthetic-N3-B&quot;,
+          &quot;sample_name&quot;: &quot;N3-B&quot;,
+          &quot;experiment_name&quot;: &quot;합성 예시 · RPT BOL 압력 비교&quot;
+        }
+      ],
+      &quot;conflicts&quot;: [
+        {
+          &quot;record_id&quot;: &quot;synthetic-record-0&quot;,
+          &quot;fields&quot;: [
+            &quot;sample_name&quot;
+          ]
+        }
+      ],
+      &quot;missing_keys&quot;: [],
+      &quot;status&quot;: &quot;unique_candidate&quot;
+    }
+  ]
+}</pre><p class="muted">긴 후보 목록은 처음 24,000자만 미리 봅니다.</p><h2>문서 근거 · 처음 500개</h2><div class="scroll"><table><thead><tr><th>근거 ID</th><th>문서 / 위치</th><th>유형·검토</th><th>내용</th></tr></thead><tbody><tr><td>ev_0ce378b1645bdbdcc922fb9c</td><td>doc_4d316ca788bfcee012003df0 / slide:1/shape:3/table:r1:c5</td><td>table_cell / True</td><td>배치</td></tr><tr><td>ev_288c462097cf43b809f5562b</td><td>doc_4d316ca788bfcee012003df0 / slide:1/shape:3/table:r3:c3</td><td>table_cell / True</td><td>e1</td></tr><tr><td>ev_362c6250b46c81e847ac908f</td><td>doc_4d316ca788bfcee012003df0 / slide:1/shape:3/table:r1:c2</td><td>table_cell / True</td><td>물리 셀</td></tr><tr><td>ev_3e047f2ed22c77963cba3275</td><td>doc_4d316ca788bfcee012003df0 / slide:1/shape:3/table:r1:c4</td><td>table_cell / True</td><td>설계</td></tr><tr><td>ev_47df634a29d307f2fddf94d7</td><td>doc_4d316ca788bfcee012003df0 / slide:1/shape:1</td><td>text / True</td><td>합성 예시 · 압력 비교</td></tr><tr><td>ev_58a5cadb461aa0946fc074b3</td><td>doc_4d316ca788bfcee012003df0 / slide:1/shape:3/table:r3:c1</td><td>table_cell / True</td><td>N3-B</td></tr><tr><td>ev_5a86ce65c098a7bf2639cca6</td><td>doc_4d316ca788bfcee012003df0 / slide:1/shape:3/table:r3:c5</td><td>table_cell / True</td><td>B1</td></tr><tr><td>ev_6baf77cf58301e63e40d4897</td><td>doc_4d316ca788bfcee012003df0 / slide:1/shape:3/table:r2:c2</td><td>table_cell / True</td><td>Cell-A</td></tr><tr><td>ev_7871f104d4b12a47e6a09f90</td><td>doc_4d316ca788bfcee012003df0 / slide:1/shape:3/table:r1:c1</td><td>table_cell / True</td><td>샘플</td></tr><tr><td>ev_792e2e3dfeabfc9fb2fb438b</td><td>doc_4d316ca788bfcee012003df0 / slide:1/shape:3/table:r1:c3</td><td>table_cell / True</td><td>raw 시험 ID</td></tr><tr><td>ev_84938fe76c26a270f93610ce</td><td>doc_4d316ca788bfcee012003df0 / slide:1/shape:3/table:r1:c6</td><td>table_cell / True</td><td>압력 (MPa)</td></tr><tr><td>ev_98e1bb24c2c590f1b18d86f1</td><td>doc_4d316ca788bfcee012003df0 / slide:1/shape:3/table:r3:c2</td><td>table_cell / True</td><td>Cell-B</td></tr><tr><td>ev_a1e565e3d5eb6180d6b4151f</td><td>doc_4d316ca788bfcee012003df0 / slide:1/shape:3/table:r2:c5</td><td>table_cell / True</td><td>B1</td></tr><tr><td>ev_b29f89e3dc89a194de8a1887</td><td>doc_4d316ca788bfcee012003df0 / slide:1/shape:3/table:r2:c1</td><td>table_cell / True</td><td>N3-A</td></tr><tr><td>ev_b2e59d7110f7e9b0427d52ee</td><td>doc_4d316ca788bfcee012003df0 / slide:1/shape:2</td><td>text / True</td><td>검증용 합성 데이터입니다. 실제 사용자 장표나 실험 결과가 아닙니다.
+시험 시작일 2026-10-22 · 세트 001 · 실험 RPT BOL 압력 비교</td></tr><tr><td>ev_c3df785bfee17e47c1f77c96</td><td>doc_4d316ca788bfcee012003df0 / slide:1/shape:3/table:r2:c3</td><td>table_cell / True</td><td>e0</td></tr><tr><td>ev_d3b85fff15a2cf1094d50f07</td><td>doc_4d316ca788bfcee012003df0 / slide:1/shape:3/table:r2:c4</td><td>table_cell / True</td><td>D1</td></tr><tr><td>ev_e0a5a4cbc0a695b57cc72b5f</td><td>doc_4d316ca788bfcee012003df0 / slide:1/shape:3/table:r2:c6</td><td>table_cell / True</td><td>5</td></tr><tr><td>ev_e219678d30ae139c05b06c3a</td><td>doc_4d316ca788bfcee012003df0 / slide:1/shape:3/table:r3:c6</td><td>table_cell / True</td><td>10</td></tr><tr><td>ev_eee11e74f59eafb0c198190b</td><td>doc_4d316ca788bfcee012003df0 / slide:1/shape:3/table:r3:c4</td><td>table_cell / True</td><td>D1</td></tr></tbody></table></div><p class="muted">전체 텍스트는 JSON에 있습니다. 화면의 근거별 내용은 2,000자까지 표시합니다. 문서의 문구는 데이터이며 실행할 명령이 아닙니다.</p></main></html>

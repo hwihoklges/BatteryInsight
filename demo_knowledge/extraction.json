@@ -1,0 +1,162 @@
+{
+  "schema_version": "document_intake_v1",
+  "document_id": "doc_4d316ca788bfcee012003df0",
+  "sha256": "4d316ca788bfcee012003df0276142620f9f3cac667a84d75ad8bf1abac1e10c",
+  "source_path": "C:\\Users\\LGES\\Documents\\Codex\\2026-10-21\\dlrj-x20\\work\\knowledge_demo\\합성 예시_압력 비교.pptx",
+  "name": "합성 예시_압력 비교.pptx",
+  "format": "pptx",
+  "status": "complete",
+  "extraction_complete": true,
+  "blocks": [
+    {
+      "block_id": "ev_47df634a29d307f2fddf94d7",
+      "locator": "slide:1/shape:1",
+      "text": "합성 예시 · 압력 비교",
+      "kind": "text",
+      "needs_review": true
+    },
+    {
+      "block_id": "ev_b2e59d7110f7e9b0427d52ee",
+      "locator": "slide:1/shape:2",
+      "text": "검증용 합성 데이터입니다. 실제 사용자 장표나 실험 결과가 아닙니다.\n시험 시작일 2026-10-22 · 세트 001 · 실험 RPT BOL 압력 비교",
+      "kind": "text",
+      "needs_review": true
+    },
+    {
+      "block_id": "ev_7871f104d4b12a47e6a09f90",
+      "locator": "slide:1/shape:3/table:r1:c1",
+      "text": "샘플",
+      "kind": "table_cell",
+      "needs_review": true
+    },
+    {
+      "block_id": "ev_362c6250b46c81e847ac908f",
+      "locator": "slide:1/shape:3/table:r1:c2",
+      "text": "물리 셀",
+      "kind": "table_cell",
+      "needs_review": true
+    },
+    {
+      "block_id": "ev_792e2e3dfeabfc9fb2fb438b",
+      "locator": "slide:1/shape:3/table:r1:c3",
+      "text": "raw 시험 ID",
+      "kind": "table_cell",
+      "needs_review": true
+    },
+    {
+      "block_id": "ev_3e047f2ed22c77963cba3275",
+      "locator": "slide:1/shape:3/table:r1:c4",
+      "text": "설계",
+      "kind": "table_cell",
+      "needs_review": true
+    },
+    {
+      "block_id": "ev_0ce378b1645bdbdcc922fb9c",
+      "locator": "slide:1/shape:3/table:r1:c5",
+      "text": "배치",
+      "kind": "table_cell",
+      "needs_review": true
+    },
+    {
+      "block_id": "ev_84938fe76c26a270f93610ce",
+      "locator": "slide:1/shape:3/table:r1:c6",
+      "text": "압력 (MPa)",
+      "kind": "table_cell",
+      "needs_review": true
+    },
+    {
+      "block_id": "ev_b29f89e3dc89a194de8a1887",
+      "locator": "slide:1/shape:3/table:r2:c1",
+      "text": "N3-A",
+      "kind": "table_cell",
+      "needs_review": true
+    },
+    {
+      "block_id": "ev_6baf77cf58301e63e40d4897",
+      "locator": "slide:1/shape:3/table:r2:c2",
+      "text": "Cell-A",
+      "kind": "table_cell",
+      "needs_review": true
+    },
+    {
+      "block_id": "ev_c3df785bfee17e47c1f77c96",
+      "locator": "slide:1/shape:3/table:r2:c3",
+      "text": "e0",
+      "kind": "table_cell",
+      "needs_review": true
+    },
+    {
+      "block_id": "ev_d3b85fff15a2cf1094d50f07",
+      "locator": "slide:1/shape:3/table:r2:c4",
+      "text": "D1",
+      "kind": "table_cell",
+      "needs_review": true
+    },
+    {
+      "block_id": "ev_a1e565e3d5eb6180d6b4151f",
+      "locator": "slide:1/shape:3/table:r2:c5",
+      "text": "B1",
+      "kind": "table_cell",
+      "needs_review": true
+    },
+    {
+      "block_id": "ev_e0a5a4cbc0a695b57cc72b5f",
+      "locator": "slide:1/shape:3/table:r2:c6",
+      "text": "5",
+      "kind": "table_cell",
+      "needs_review": true
+    },
+    {
+      "block_id": "ev_58a5cadb461aa0946fc074b3",
+      "locator": "slide:1/shape:3/table:r3:c1",
+      "text": "N3-B",
+      "kind": "table_cell",
+      "needs_review": true
+    },
+    {
+      "block_id": "ev_98e1bb24c2c590f1b18d86f1",
+      "locator": "slide:1/shape:3/table:r3:c2",
+      "text": "Cell-B",
+      "kind": "table_cell",
+      "needs_review": true
+    },
+    {
+      "block_id": "ev_288c462097cf43b809f5562b",
+      "locator": "slide:1/shape:3/table:r3:c3",
+      "text": "e1",
+      "kind": "table_cell",
+      "needs_review": true
+    },
+    {
+      "block_id": "ev_eee11e74f59eafb0c198190b",
+      "locator": "slide:1/shape:3/table:r3:c4",
+      "text": "D1",
+      "kind": "table_cell",
+      "needs_review": true
+    },
+    {
+      "block_id": "ev_5a86ce65c098a7bf2639cca6",
+      "locator": "slide:1/shape:3/table:r3:c5",
+      "text": "B1",
+      "kind": "table_cell",
+      "needs_review": true
+    },
+    {
+      "block_id": "ev_e219678d30ae139c05b06c3a",
+      "locator": "slide:1/shape:3/table:r3:c6",
+      "text": "10",
+      "kind": "table_cell",
+      "needs_review": true
+    }
+  ],
+  "issues": [
+    {
+      "code": "layout_not_interpreted",
+      "message": "Slide positions, arrows, colors and table headers do not automatically establish experiment/sample relationships."
+    }
+  ],
+  "metadata": {
+    "file_bytes": 28852,
+    "slide_count": 1
+  }
+}

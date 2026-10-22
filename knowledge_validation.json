@@ -1,0 +1,155 @@
+{
+  "schema_version": "knowledge_foundation_validation_v1",
+  "created_on": "2026-10-22",
+  "real_preparation": {
+    "database_manifest_sha256": true,
+    "registry_hash": true,
+    "raw_key_count": 36,
+    "all_keys_unconfirmed": true,
+    "documents": 0,
+    "records": 0
+  },
+  "synthetic_integration": {
+    "synthetic_only": true,
+    "actual_user_documents_imported": 0,
+    "actual_raw_database_modified": false,
+    "source_presentation": "C:\\Users\\LGES\\Documents\\Codex\\2026-10-21\\dlrj-x20\\work\\knowledge_demo\\합성 예시_압력 비교.pptx",
+    "extracted_evidence": 20,
+    "reviewed_records": 2,
+    "confirmed_links": 2,
+    "raw_tests": 2,
+    "metric_observations": 18,
+    "raw_database_bytes_unchanged": true,
+    "observation_values_unchanged": true,
+    "immutable_experiment_ids": [
+      "e0",
+      "e1"
+    ],
+    "physical_aliases_explicit": [
+      "Cell-A",
+      "Cell-B"
+    ],
+    "sample_labels": [
+      "N3-A",
+      "N3-B"
+    ],
+    "review_page": "C:\\Users\\LGES\\Documents\\Codex\\2026-10-21\\dlrj-x20\\work\\knowledge_demo\\knowledge_review\\index.html",
+    "workbench_page": "C:\\Users\\LGES\\Documents\\Codex\\2026-10-21\\dlrj-x20\\work\\knowledge_demo\\result\\dashboard\\index.html"
+  },
+  "synthetic_browser": {
+    "synthetic_only": true,
+    "checks": [
+      {
+        "name": "fixture contains synthetic data only",
+        "passed": true,
+        "detail": null
+      },
+      {
+        "name": "raw measurements and original database remain unchanged",
+        "passed": true,
+        "detail": null
+      },
+      {
+        "name": "one graph point per raw test",
+        "passed": true,
+        "detail": null
+      },
+      {
+        "name": "reviewed sample names label the graph",
+        "passed": true,
+        "detail": null
+      },
+      {
+        "name": "inspector exposes slide experiment and sample identity",
+        "passed": true,
+        "detail": "셀Cell-A시험t0프로토콜P1화학계NMC온도25 °C비교군전체 설계장표 실험합성 예시 · RPT BOL 압력 비교샘플 IDSynthetic-N3-A시험 날짜 · 세트2026-10-22 · 001장표 근거7개 · 아래 근거 위치에서 확인등록 버전synthetic-record-0 / 1근거 위치 · 7개 펼치기문서 1slide:1/shape:3/table:r2:c2slide:1/shape:3/table:r2:c5slide:1/shape:3/table:r2:c1slide:1/shape:2slide:1/shape:3/table:r2:c3slide:1/shape:3/table:r2:c4slide:1/shape:3/table:r2:c6"
+      },
+      {
+        "name": "start date and zero-preserving set number visible",
+        "passed": true,
+        "detail": null
+      },
+      {
+        "name": "exact slide and table provenance visible",
+        "passed": true,
+        "detail": null
+      },
+      {
+        "name": "long provenance starts collapsed",
+        "passed": true,
+        "detail": null
+      },
+      {
+        "name": "exact provenance can be expanded",
+        "passed": true,
+        "detail": null
+      },
+      {
+        "name": "physical cell alias was explicitly registered",
+        "passed": true,
+        "detail": null
+      },
+      {
+        "name": "electrochemical graph retains both linked samples",
+        "passed": true,
+        "detail": null
+      },
+      {
+        "name": "second sample retains a distinct reviewed record and cell",
+        "passed": true,
+        "detail": null
+      },
+      {
+        "name": "workbench metadata fits mobile width",
+        "passed": true,
+        "detail": null
+      },
+      {
+        "name": "review page identifies synthetic presentation",
+        "passed": true,
+        "detail": null
+      },
+      {
+        "name": "review page shows two reviewed sample records",
+        "passed": true,
+        "detail": null
+      },
+      {
+        "name": "review preserves slide table location and original text",
+        "passed": true,
+        "detail": null
+      },
+      {
+        "name": "review page distinguishes proposals from confirmation",
+        "passed": true,
+        "detail": null
+      },
+      {
+        "name": "review tables scroll within mobile page",
+        "passed": true,
+        "detail": null
+      },
+      {
+        "name": "no JavaScript runtime errors",
+        "passed": true,
+        "detail": []
+      }
+    ],
+    "errors": []
+  },
+  "features": [
+    "local_pptx_pdf_evidence_intake",
+    "sqlite_document_sample_experiment_registry",
+    "explicit_review_and_revision_history",
+    "raw_candidate_matching",
+    "confirmed_link_overlay",
+    "read_only_database_workbench_bridge",
+    "intake_checklist_and_templates"
+  ],
+  "actual_documents_received": false,
+  "automatic_ocr": false,
+  "automatic_semantic_confirmation": false,
+  "raw_values_modified": false,
+  "guide": "knowledge_intake_guide.html",
+  "demo": "demo_knowledge/index.html"
+}

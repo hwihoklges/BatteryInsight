@@ -1,0 +1,12 @@
+{
+  "decisions": [
+    {
+      "experiment_id": "<후보의 experiment_id>",
+      "record_id": "<선택한 record_id>",
+      "decision": "confirm",
+      "expected_record_revision": 1,
+      "source_sha256": "<후보의 원본 SHA-256>",
+      "reason": "<날짜·세트·샘플·채널을 확인한 근거>"
+    }
+  ]
+}
