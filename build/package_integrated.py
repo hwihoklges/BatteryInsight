@@ -31,7 +31,7 @@ def main():
     if sha(exe) != frozen["exe_sha256"]:
         raise SystemExit("The executable changed after frozen QA.")
     suites = {}
-    for name, file in (("regression", "battery_insight_integrated_all_tests.xml"), ("final_integration", "integrated_final_tests.xml")):
+    for name, file in (("regression", "battery_insight_integrated_all_tests.xml"), ("queue_and_4101", "cyc_queue_targeted_tests.xml")):
         suite = ET.parse(ROOT / "work" / file).getroot().find("testsuite")
         if suite is None or int(suite.attrib["errors"]) or int(suite.attrib["failures"]):
             raise SystemExit("All required tests must pass.")
@@ -48,17 +48,22 @@ def main():
         checked[name] = hashlib.sha256(archive.extract(entries[name])).hexdigest() == sha(path)
     if not all(checked.values()):
         raise SystemExit("Embedded code/assets/notices differ from released source.")
-    validation = {"application": "BatteryInsight", "version": "3.0.0", "exe_sha256": sha(exe), "exe_bytes": exe.stat().st_size,
+    validation = {"application": "BatteryInsight", "version": "3.1.0", "exe_sha256": sha(exe), "exe_bytes": exe.stat().st_size,
         "tests": suites, "frozen_execution": {"status": frozen["status"], "scope": frozen["scope"], "summary": frozen["summary"],
             "selftest_checks": frozen["selftest_checks"], "gui_checks": frozen["gui_checks"], "checks": frozen["checks"]},
         "browser": browser, "runtime_audit": audit, "embedded_artifacts_verified": len(checked),
         "build": json.loads((PROJECT / "build/build_environment.json").read_text(encoding="utf-8")),
         "scope": ["Single offline Windows x64 executable; no Python installation/API key required",
-            "Native CYC 4100 -> all-record Parquet -> catalogue -> reviewed classification -> document links -> existing workbench",
+            "Native CYC 4100/4101 -> all-record Parquet -> catalogue -> reviewed classification -> document links -> existing workbench",
             "Project-local converted Parquet paths are relative; external folders remain references",
             "No LLM calls or ML training; official AIM formulas remain unconfigured unless verified export supplied",
             "Native units require confirmation before SI profile metrics; current/CC/CV-dependent metrics require richer inputs",
             "Source regression suite and final integration suite overlap and are not additive"]}
+    patch_qa = json.loads((ROOT / "work/cyc_4101_patch_qa/report.json").read_text(encoding="utf-8"))
+    if patch_qa["status"] != "passed":
+        raise SystemExit("Actual 4101 source QA must pass.")
+    validation["4101_source_verification"] = {key: patch_qa[key] for key in (
+        "input_sha256", "source_unmodified", "rows", "all_values_exact", "parquet_values_exact", "library_registration", "reused", "legacy_files", "legacy_rows")}
     (PROJECT / "INTEGRATED_VALIDATION.json").write_text(json.dumps(validation, ensure_ascii=False, indent=2), encoding="utf-8")
     (PROJECT / "SHA256.txt").write_text(sha(exe) + "  BatteryInsight.exe\n", encoding="utf-8")
     shutil.copyfile(PROJECT / "battery_insight/resources/통합사용안내.html", PROJECT / "통합사용안내.html")

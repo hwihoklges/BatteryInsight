@@ -12,6 +12,7 @@ import webbrowser
 
 from . import __version__
 from . import library
+from .folder_queue import FolderQueue, run_folders
 
 LABELS = {"sample_name": "샘플 이름", "physical_cell_id": "물리 셀 ID", "test_type": "시험 종류",
     "test_date": "시험 날짜 YYYY-MM-DD", "date_kind": "날짜 의미(test_start 등)", "set_no": "세트 번호",
@@ -85,10 +86,13 @@ class BatteryInsightApp:
         frame = self.data_tab
         actions = ttk.Frame(frame)
         actions.pack(fill="x")
-        for text, command in (("CYC 폴더 변환·등록", self.convert), ("Parquet 폴더 등록", self.scan),
+        for text, command in (("CYC 폴더 대기 목록에 추가", self.convert), ("Parquet 폴더 등록", self.scan),
                               ("변경 반영", self.refresh_all), ("선택 실험 정보", self.edit_metadata), ("표 새로고침", self.reload)):
             self.button(actions, text, command).pack(side="left", padx=(0, 5))
         ttk.Label(frame, text="원본 데이터는 보존합니다. 파일명 후보는 미확인 정보이며, 확인한 설계·조건·단위만 비교에 사용합니다.", wraplength=1050).pack(anchor="w", pady=8)
+        self.conversion_queue = FolderQueue(frame, on_start=self.start_conversion,
+                                            notify=lambda message: self.status.set(message))
+        self.conversion_queue.pack(fill="x", pady=(0, 8))
         filters = ttk.Frame(frame)
         filters.pack(fill="x")
         ttk.Label(filters, text="검색").pack(side="left")
@@ -165,6 +169,7 @@ class BatteryInsightApp:
         self.status.set(title)
         for control in self.controls:
             control.configure(state="disabled")
+        self.conversion_queue.set_busy(True)
         def run():
             try:
                 result = function()
@@ -175,7 +180,7 @@ class BatteryInsightApp:
         self.worker.start()
 
     def progress(self, event):
-        self.events.put(("progress", event.get("message") or json.dumps(event, ensure_ascii=False)))
+        self.events.put(("progress", event))
 
     def poll(self):
         while True:
@@ -184,12 +189,16 @@ class BatteryInsightApp:
             except queue.Empty:
                 break
             if kind == "progress":
+                if isinstance(value, dict):
+                    self.conversion_queue.update_event(value)
+                    value = value.get("message") or json.dumps(value, ensure_ascii=False)
                 self.status.set(str(value))
                 self.write_log(value)
                 continue
             self.busy = False
             for control in self.controls:
                 control.configure(state="normal")
+            self.conversion_queue.set_busy(False)
             if kind == "error":
                 self.status.set("작업 오류: " + value)
                 self.write_log(value)
@@ -232,10 +241,22 @@ class BatteryInsightApp:
             self.tree.selection_set(selected)
 
     def convert(self):
-        source = filedialog.askdirectory(parent=self.root, title="CYC 원본 폴더 선택")
-        if source:
-            project = self.project_root()
-            self.task("CYC 변환·DB 등록", lambda: library.convert_and_register(project, source, progress=self.progress))
+        self.conversion_queue.choose_one()
+
+    def start_conversion(self):
+        if self.busy:
+            return
+        sources = tuple(self.conversion_queue.sources)
+        if not sources:
+            messagebox.showinfo("변환 대기 목록", "먼저 변환할 폴더를 추가하세요.", parent=self.root)
+            return
+        project = self.project_root()
+        if any(project == source or project.is_relative_to(source) for source in sources):
+            messagebox.showerror("저장 위치 확인", "프로젝트 폴더는 모든 원본 폴더 바깥에 지정하세요.", parent=self.root)
+            return
+        def convert(source, *, progress):
+            return library.convert_and_register(project, source, progress=progress)
+        self.task("CYC 폴더 순차 변환·DB 등록", lambda: run_folders(sources, convert, progress=self.progress))
 
     def scan(self):
         source = filedialog.askdirectory(parent=self.root, title="변환된 Parquet 폴더 선택")
@@ -245,7 +266,7 @@ class BatteryInsightApp:
 
     def refresh_all(self):
         project = self.project_root()
-        self.task("변경 반영·분류 규칙 적용", lambda: library.refresh_project(project, progress=self.progress))
+        self.task("Parquet 변경 반영·분류 규칙 적용", lambda: library.refresh_project(project, progress=self.progress, convert_sources=False))
 
     def watch(self):
         if self.auto.get() and not self.busy:
@@ -494,7 +515,9 @@ def check_gui(project):
     try:
         root.update_idletasks()
         checks = {"hidden": root.state() == "withdrawn", "four_integrated_tabs": len(app.book.tabs()) == 4,
-                  "no_llm_configuration": True, "idle": not app.busy, "project_selected": app.project_root() == Path(project).resolve()}
+                  "no_llm_configuration": True, "idle": not app.busy, "project_selected": app.project_root() == Path(project).resolve(),
+                  "queue_initially_empty": not app.conversion_queue.sources,
+                  "explicit_start_button": app.conversion_queue.start_button.cget("text") == "시작"}
         return {"status": "success" if all(checks.values()) else "failed", "checks": checks}
     finally:
         app.close()

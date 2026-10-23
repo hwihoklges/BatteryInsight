@@ -1,1 +1,1 @@
-aea847f19a83f44ba87a48fc941fdfb8d5d80c36a8346c474e561214fa8a9e3e  BatteryInsight.exe
+621c8d84c3c24f741d043fa620a3eb7d32c1ae3d96cf16a7489aeadbf9c02350  BatteryInsight.exe

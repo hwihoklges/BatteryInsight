@@ -71,5 +71,7 @@ def run_self_test():
         moved = base / "copied-project"
         shutil.copytree(project, moved)
         checks["project_local_data_portable"] = all(Path(row["path"]).is_relative_to(moved) and Path(row["path"]).is_file() for row in library.library_rows(moved))
+        from .native_cyc.selftest import run_self_test as native_self_test
+        checks["4100_and_4101_native_contracts"] = native_self_test()["status"] == "success"
     return {"status": "success" if all(checks.values()) else "failed", "checks": checks,
             "runtime": {"frozen": bool(getattr(sys, "frozen", False)), "python": sys.version.split()[0]}, "llm_calls": 0}

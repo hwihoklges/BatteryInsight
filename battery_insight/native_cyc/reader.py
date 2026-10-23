@@ -1,4 +1,4 @@
-"""Strict, streaming reader for the observed PNE 4100 native CYC layout.
+"""Streaming PNE 4100/4101 CYC reader with versioned header capacities.
 
 No Restore/CSV/schedule/unit-detector dependency. Every CYC record is emitted.
 Unverified voltage/capacity units remain native; optional CTS only adds labels.
@@ -17,11 +17,11 @@ import sys
 import pyarrow as pa
 
 
-FORMAT_ID = "pne_cyc_4100_o392_r120_v1"
+FORMAT_ID = "pne_native_cyc_float32_v2"
 HEADER_MAGIC = (20180615, 4100)
-DATA_START = 392
+DATA_START = 404
 RECORD_SIZE = 120
-TAIL_SIZE = 12
+TAIL_SIZE = 0
 FIELD_IDS = (22, 6, 38, 40, 1, 2, 3, 36, 26, 27, 11, 37, 34, 35, 23,
              24, 12, 4, 10, 25, 33, 41, 50, 42, 44, 45, 46, 47, 48, 49)
 CYC_SIGNATURE = b"PNE record data file."
@@ -29,6 +29,12 @@ CTS_SIGNATURE = b"PNE Cycler step end data file."
 CTS_START = 896
 CTS_RECORD_SIZE = 172
 MAX_CTS_BYTES = 128 * 1024 * 1024
+# PS_RECORD_FILE_HEADER reserves more WORD slots than nColumnCount. The old
+# reader's 392-byte start included 12 bytes of this reserve in every row and
+# compensated with shifted offsets. Real float records start after ALL slots.
+# 4100: 36 slots -> 404 bytes; 4101: 42 slots -> 416 bytes.
+LAYOUTS = {(20180615, 4100): 36, (20220405, 4101): 42}
+REQUIRED_FIELDS = {"data_seq": 22, "step_time_s": 6, "voltage_native": 1, "capacity_native": 3}
 
 
 class CycFormatError(ValueError):
@@ -75,6 +81,9 @@ class _Plan:
     path: Path
     signature: tuple
     record_count: int
+    data_start: int
+    record_size: int
+    offsets: dict[str, int]
     cts_path: Path | None
     cts_signature: tuple | None
     spans: list[tuple[int, int, _Step]]
@@ -91,7 +100,7 @@ def _check_unchanged(path, expected):
         raise CycFormatError(f"Input changed while reading: {path}")
 
 
-def _cts_spans(path, cyc, record_count, warnings):
+def _cts_spans(path, cyc, record_count, warnings, *, data_start, record_size, time_offset):
     """Use unique valid ranges only; ambiguity removes labels, never CYC rows."""
     cts = path.with_suffix(".cts")
     if not cts.is_file():
@@ -120,7 +129,7 @@ def _cts_spans(path, cyc, record_count, warnings):
             continue
         cycle = struct.unpack_from("<i", content, base + 20)[0]
         step_time, total_time = struct.unpack_from("<ff", content, base + 52)
-        cyc.seek(DATA_START + end * RECORD_SIZE + 16)
+        cyc.seek(data_start + end * record_size + time_offset)
         raw = cyc.read(4)
         if len(raw) != 4:
             raise CycFormatError("CYC endpoint became unavailable while reading CTS labels")
@@ -176,34 +185,51 @@ def _make_plan(cyc_path):
     if not path.is_file() or path.suffix.lower() != ".cyc":
         raise CycFormatError(f"Choose an existing native .cyc file: {path}")
     before = _signature(path)
-    if before[0] < DATA_START + RECORD_SIZE + TAIL_SIZE:
-        raise CycFormatError("CYC is empty, truncated, or shorter than one verified record")
-    count, tail = divmod(before[0] - DATA_START, RECORD_SIZE)
-    if tail != TAIL_SIZE:
-        raise CycFormatError("Unsupported/truncated CYC length: verified 4100 requires 392 + N*120 + 12 bytes")
     warnings = [{"code": "native_units_unverified",
                  "message": "Voltage and capacity retain exact native numbers. Their physical units are not identified by the supported header; no V/Ah scaling is applied."}]
     with path.open("rb") as source:
-        header = source.read(DATA_START)
-        if struct.unpack_from("<ii", header) != HEADER_MAGIC:
-            raise CycFormatError("Unsupported CYC header/version; only observed 20180615 / 4100 is verified")
+        prefix = source.read(332)
+        if len(prefix) < 332:
+            raise CycFormatError(f"CYC header is truncated: {before[0]:,} bytes; at least 332 header bytes required")
+        magic = struct.unpack_from("<ii", prefix)
+        capacity = LAYOUTS.get(magic)
+        if capacity is None:
+            raise CycFormatError(f"미지원 CYC 버전 {magic[0]} / {magic[1]}. 지원: 4100(20180615), 4101(20220405).")
+        data_start = 332 + 2 * capacity
+        header = prefix + source.read(data_start - len(prefix))
+        if len(header) != data_start:
+            raise CycFormatError(f"CYC header is truncated: version {magic[1]} requires {data_start} bytes")
         if header[72:72 + len(CYC_SIGNATURE)] != CYC_SIGNATURE:
             raise CycFormatError("Unsupported CYC signature")
-        if struct.unpack_from("<i", header, 328)[0] != 30 or struct.unpack_from("<30H", header, 332) != FIELD_IDS:
-            raise CycFormatError("Unsupported CYC field table; record offsets cannot be assumed")
-        cts, cts_signature, spans, coverage = _cts_spans(path, source, count, warnings)
+        fields = struct.unpack_from("<i", header, 328)[0]
+        if not 1 <= fields <= capacity:
+            raise CycFormatError(f"Invalid CYC field count {fields}; version {magic[1]} reserves {capacity} slots")
+        ids = struct.unpack_from(f"<{fields}H", header, 332)
+        if len(set(ids)) != len(ids) or not set(REQUIRED_FIELDS.values()).issubset(ids):
+            raise CycFormatError("Unsupported CYC field table: duplicate fields or required time/voltage/capacity field missing")
+        if any(header[332 + 2 * fields:]):
+            raise CycFormatError("Unsupported CYC header reserve: nonzero unused column slots")
+        record_size = fields * 4
+        count, tail = divmod(before[0] - data_start, record_size)
+        if tail or count < 1:
+            raise CycFormatError(f"CYC length mismatch/truncated: version {magic[1]}, actual {before[0]:,} bytes; "
+                                 f"requires {data_start} + N*{record_size} bytes (remainder {tail}). No partial record is discarded.")
+        offsets = {name: ids.index(code) * 4 for name, code in REQUIRED_FIELDS.items()}
+        cts, cts_signature, spans, coverage = _cts_spans(path, source, count, warnings,
+            data_start=data_start, record_size=record_size, time_offset=offsets["step_time_s"])
     _check_unchanged(path, before)
     units = {field.name: field.metadata[b"unit"].decode() for field in SCHEMA}
-    info = {"schema_version": 1, "path": str(path), "layout": FORMAT_ID,
-            "header_magic": list(HEADER_MAGIC), "data_start": DATA_START, "record_size": RECORD_SIZE,
+    layout = f"pne_cyc_{magic[1]}_h{data_start}_r{record_size}_v2"
+    info = {"schema_version": 2, "path": str(path), "layout": layout,
+            "header_magic": list(magic), "data_start": data_start, "record_size": record_size,
+            "column_count": fields, "column_capacity": capacity, "column_ids": list(ids),
             "record_count": count, "trailing_bytes": tail, "source_bytes": before[0],
             "cts_path": str(cts) if cts else None, "cts": coverage, "units": units,
             "unit_policy": "preserve_native_no_inference", "warnings": warnings,
-            "columns": list(SCHEMA.names), "native_offsets": {"data_seq": 12, "step_time_s": 16,
-                                                               "voltage_native": 28, "capacity_native": 36},
+            "columns": list(SCHEMA.names), "native_offsets": offsets,
             "time_definition": {"step_time_s": "Native per-step seconds; may reset at each step.",
                                 "total_time_s": "Optional CTS-derived elapsed seconds; null without a unique verified CTS time range."}}
-    return _Plan(path, before, count, cts, cts_signature, spans, info)
+    return _Plan(path, before, count, data_start, record_size, offsets, cts, cts_signature, spans, info)
 
 
 def inspect_file(cyc_path) -> dict:
@@ -217,28 +243,30 @@ def iter_batches(cyc_path, batch_rows=65536):
         raise ValueError("batch_rows must be an integer from 1 to 1,000,000")
     plan = _make_plan(cyc_path)
     metadata = dict(SCHEMA.metadata)
+    metadata[b"format_id"] = plan.info["layout"].encode()
     metadata[b"source_cyc"] = str(plan.path).encode("utf-8")
     metadata[b"source_cts"] = (str(plan.cts_path) if plan.cts_path else "").encode("utf-8")
     metadata[b"reader_inspection"] = json.dumps(plan.info, ensure_ascii=False, sort_keys=True).encode("utf-8")
     schema = SCHEMA.with_metadata(metadata)
     span_index = 0
     with plan.path.open("rb") as source:
-        source.seek(DATA_START)
+        source.seek(plan.data_start)
         for start in range(0, plan.record_count, batch_rows):
             length = min(batch_rows, plan.record_count - start)
-            raw = source.read(length * RECORD_SIZE)
-            if len(raw) != length * RECORD_SIZE:
+            raw = source.read(length * plan.record_size)
+            if len(raw) != length * plan.record_size:
                 raise CycFormatError("CYC file was truncated while converting")
             values = array("f")
             values.frombytes(raw)
             if sys.byteorder != "little":
                 values.byteswap()
-            step_times = values[4::30]
+            width = plan.record_size // 4
+            step_times = values[plan.offsets["step_time_s"] // 4::width]
             columns = [pa.array(range(start + 1, start + length + 1), type=pa.int64()),
-                       pa.array(values[3::30], type=pa.float64()),
+                       pa.array(values[plan.offsets["data_seq"] // 4::width], type=pa.float64()),
                        pa.array(step_times, type=pa.float64()),
-                       pa.array(values[7::30], type=pa.float64()),
-                       pa.array(values[9::30], type=pa.float64())]
+                       pa.array(values[plan.offsets["voltage_native"] // 4::width], type=pa.float64()),
+                       pa.array(values[plan.offsets["capacity_native"] // 4::width], type=pa.float64())]
             cycles, steps, segments, total_times = ([None] * length for _ in range(4))
             matched = [False] * length
             while span_index < len(plan.spans) and plan.spans[span_index][1] <= start:

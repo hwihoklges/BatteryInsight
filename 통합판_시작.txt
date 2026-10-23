@@ -1,4 +1,4 @@
-BatteryInsight 3.0.0 — 오프라인 통합판
+BatteryInsight 3.1.0 — 오프라인 통합판
 
 ZIP 전체 압축 해제 → BatteryInsight.exe 또는 바로실행.cmd 실행
 
@@ -22,4 +22,4 @@ CTS가 없어도 전체 기록을 저장합니다. _org 등 사본도 각각 보
 
 사용 안내: 통합사용안내.html
 실행 검증: VALIDATION.json / 외부 구성요소: THIRD_PARTY_NOTICES.txt
-Windows 10/11 x64 대상, Windows 11 x64 검증. 입력은 검증된 PNE CYC 4100입니다.
+Windows 10/11 x64 대상, Windows 11 x64 검증. 입력은 검증된 PNE CYC 4100/4101입니다.

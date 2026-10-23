@@ -1,17 +1,17 @@
 {
   "application": "BatteryInsight",
-  "version": "3.0.0",
-  "exe_sha256": "aea847f19a83f44ba87a48fc941fdfb8d5d80c36a8346c474e561214fa8a9e3e",
-  "exe_bytes": 105449495,
+  "version": "3.1.0",
+  "exe_sha256": "621c8d84c3c24f741d043fa620a3eb7d32c1ae3d96cf16a7489aeadbf9c02350",
+  "exe_bytes": 105465729,
   "tests": {
     "regression": {
-      "tests": "620",
+      "tests": "637",
       "errors": "0",
       "failures": "0",
       "skipped": "0"
     },
-    "final_integration": {
-      "tests": "26",
+    "queue_and_4101": {
+      "tests": "10",
       "errors": "0",
       "failures": "0",
       "skipped": "0"
@@ -23,10 +23,12 @@
     "summary": {
       "actual_files": 9,
       "actual_records": 606756,
-      "selftest_checks": 17,
-      "gui_checks": 5,
+      "selftest_checks": 18,
+      "gui_checks": 7,
       "native_input_only": true,
       "llm_calls": 0,
+      "actual_4101_files": 1,
+      "actual_4101_records": 376758,
       "unit_declaration_in_qa": "Synthetic user-declared units for workflow testing, not manufacturer unit validation"
     },
     "selftest_checks": {
@@ -46,14 +48,17 @@
       "stale_document_link_requires_review": true,
       "repeat_reuses_all_native_files": true,
       "source_unchanged": true,
-      "project_local_data_portable": true
+      "project_local_data_portable": true,
+      "4100_and_4101_native_contracts": true
     },
     "gui_checks": {
       "hidden": true,
       "four_integrated_tabs": true,
       "no_llm_configuration": true,
       "idle": true,
-      "project_selected": true
+      "project_selected": true,
+      "queue_initially_empty": true,
+      "explicit_start_button": true
     },
     "checks": {
       "no_python_on_child_path": true,
@@ -62,7 +67,8 @@
       "same_exe_opens_comparison_pipeline": true,
       "pptx_pdf_excel_readers_work_offline": true,
       "all_native_results_reused": true,
-      "actual_originals_unchanged": true
+      "actual_originals_unchanged": true,
+      "actual_4101_all_records_and_values_exact": true
     }
   },
   "browser": {
@@ -79,9 +85,9 @@
   "runtime_audit": {
     "status": "passed",
     "scope": "Static Analysis TOC and PE imports; Windows system DLLs excluded. Runtime tested separately.",
-    "analysis_sha256": "5491d4ac1d5b4b1e30a881bae3ebbb5df9dda7f066c1c55e7ae4098844b742f3",
+    "analysis_sha256": "6073b91b5223fd895f4272222fcd862bf271e49e1b70224317f63c571ce031b8",
     "binary_files": 237,
-    "python_modules": 2174,
+    "python_modules": 2175,
     "dll_references": 2220,
     "missing_non_os_dlls": [],
     "external_vc_runtime": [],
@@ -113,7 +119,7 @@
     "unresolved_distributions": [],
     "ml_modules_present": []
   },
-  "embedded_artifacts_verified": 63,
+  "embedded_artifacts_verified": 64,
   "build": {
     "python": "3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]",
     "platform": "Windows-11-10.0.26100-SP0",
@@ -135,10 +141,21 @@
   },
   "scope": [
     "Single offline Windows x64 executable; no Python installation/API key required",
-    "Native CYC 4100 -> all-record Parquet -> catalogue -> reviewed classification -> document links -> existing workbench",
+    "Native CYC 4100/4101 -> all-record Parquet -> catalogue -> reviewed classification -> document links -> existing workbench",
     "Project-local converted Parquet paths are relative; external folders remain references",
     "No LLM calls or ML training; official AIM formulas remain unconfigured unless verified export supplied",
     "Native units require confirmation before SI profile metrics; current/CC/CV-dependent metrics require richer inputs",
     "Source regression suite and final integration suite overlap and are not additive"
-  ]
+  ],
+  "4101_source_verification": {
+    "input_sha256": "3413bc95d2de584d30b3c04acaa9b8ced3f8e3e6757000622cc9d454cc57518f",
+    "source_unmodified": true,
+    "rows": 376758,
+    "all_values_exact": true,
+    "parquet_values_exact": true,
+    "library_registration": true,
+    "reused": true,
+    "legacy_files": 40,
+    "legacy_rows": 522634
+  }
 }
