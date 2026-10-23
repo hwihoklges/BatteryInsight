@@ -1,4 +1,4 @@
-BatteryInsight 3.1.0 통합판 — 개발/재빌드 안내
+BatteryInsight 3.2.0 통합판 — 개발/재빌드 안내
 
 일반 사용자는 배포 ZIP의 BatteryInsight.exe만 실행합니다.
 대상 컴퓨터에 Python, 인터넷, API 키가 필요하지 않습니다.
@@ -29,6 +29,10 @@ library_workbench.py: 프로파일 지표·원곡선·기존 비교 작업실 �
 desktop.py / unified_entry.py: 통합 화면 및 기존/신규 CLI
 native_cyc/: 검증된 CYC 4100/4101 직접 판독·전체 기록 보존 엔진
 folder_queue.py: 여러 폴더 대기 목록·수동 시작·순차 처리
+document_assets.py / slide_candidates.py: 장표 사본 보관·명시된 표와 값의 검토 후보
+traceability.py / traceability_ui.py: 공정·소재·셀·시험 연결·수정 이력
+traceability_report.py: 오프라인 추적 지도·항목별 PPT 근거
+TRACEABILITY.md: 실제 장표가 들어올 때 필요한 정보와 등록 절차
 resources/: 오프라인 지표 사전·템플릿·사용 안내
 
 Python 소스 파일을 EXE 데이터로 포함하는 것은 코드/계산 해시를 확인하기 위함입니다.

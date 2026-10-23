@@ -12,7 +12,8 @@ import tempfile
 from . import __version__
 
 COMMANDS = {"desktop", "cyc-import", "library-scan", "library-export", "library-assign", "library-rules",
-            "library-open", "library-documents", "library-candidates", "library-link", "library-features", "self-test", "check-gui", "version"}
+            "library-open", "library-documents", "library-candidates", "library-link", "library-features", "self-test", "check-gui", "version",
+            "trace-extract", "trace-import", "trace-review", "trace-report", "trace-export", "trace-demo"}
 
 
 class Parser(argparse.ArgumentParser):
@@ -98,6 +99,9 @@ def main(argv=None):
             parser.add_argument("--out", type=Path)
             parser.add_argument("--dataset")
             parser.add_argument("--record")
+            parser.add_argument("--proposal")
+            parser.add_argument("--action", choices=["accepted", "dismissed"], default="accepted")
+            parser.add_argument("--verify-raw", action="store_true")
             parser.add_argument("--metadata", type=Path)
             parser.add_argument("--rules", type=Path)
             parser.add_argument("--spec", type=Path)
@@ -122,7 +126,32 @@ def main(argv=None):
             else:
                 if args.project is None:
                     raise ValueError("--project로 프로젝트 폴더를 지정하세요.")
-                if args.command == "cyc-import":
+                if args.command.startswith("trace-"):
+                    from . import traceability
+                    if args.command == "trace-extract":
+                        from .slide_candidates import extract_proposals
+                        result = extract_proposals(args.project)
+                    elif args.command == "trace-demo":
+                        from .traceability_demo import create_demo
+                        result = create_demo(args.project)
+                    elif args.command == "trace-import":
+                        if not args.spec:
+                            raise ValueError("--spec 검토한 공정 등록 JSON이 필요합니다.")
+                        result = traceability.save_bundle(args.project, json.loads(args.spec.read_text(encoding="utf-8-sig")))
+                    elif args.command == "trace-review":
+                        from .slide_candidates import review_proposal
+                        if not args.proposal:
+                            raise ValueError("--proposal 검토할 후보 ID가 필요합니다.")
+                        result = {"saved": review_proposal(args.project, args.proposal,
+                            json.loads(args.spec.read_text(encoding="utf-8-sig")) if args.spec else None, action=args.action)}
+                    elif args.command == "trace-export":
+                        if not args.out:
+                            raise ValueError("--out 별도 JSON 내보내기 경로가 필요합니다.")
+                        result = {"output": str(traceability.export_json(args.project, args.out))}
+                    else:
+                        from .traceability_report import build_report
+                        result = {"output": str(build_report(args.project, focus=args.dataset, verify=args.verify_raw))}
+                elif args.command == "cyc-import":
                     if not args.input:
                         raise ValueError("--input CYC 폴더가 필요합니다.")
                     result = library.convert_and_register(args.project, args.input)

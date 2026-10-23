@@ -431,13 +431,21 @@ def import_documents(project, documents):
     root.mkdir(parents=True, exist_ok=True)
     write_templates(root)
     results = []
+    imported_ids = []
     with KnowledgeRegistry(root / "knowledge.sqlite3") as registry:
         for path in documents:
             extraction = extract_document(path)
             if extraction.get("sha256"):
+                if extraction.get("status") != "failed":
+                    from .document_assets import save_document_copy
+                    save_document_copy(project, path, extraction)
                 registry.import_document(extraction)
+                imported_ids.append(extraction["document_id"])
             results.append({"path": str(path), "status": extraction.get("status"), "issues": extraction.get("issues", [])})
         write_review(registry.snapshot(), root / "review")
+    if imported_ids:
+        from .slide_candidates import extract_proposals
+        extract_proposals(project, document_ids=set(imported_ids))
     return results
 
 

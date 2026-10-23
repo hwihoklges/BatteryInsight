@@ -126,6 +126,7 @@ class BatteryInsightApp:
                               ("장표 검토 화면", lambda: self.open_path(self.project_root() / "knowledge/review/index.html"))):
             self.button(actions, text, command).pack(side="left", padx=(0, 5))
         ttk.Label(frame, text="장표의 날짜·세트·샘플 정보를 확인해 등록합니다. 이미지 표·그래프는 자동 확정하지 않습니다.", wraplength=1050).pack(anchor="w", pady=10)
+        self.button(frame, "PPT · 공정부터 raw까지 추적", self.open_traceability).pack(anchor="w", pady=(0, 8))
         self.doc_tree = ttk.Treeview(frame, columns=("document", "locator", "text"), show="headings")
         for key, title, width in (("document", "문서/근거", 250), ("locator", "위치", 130), ("text", "텍스트·확인할 내용", 650)):
             self.doc_tree.heading(key, text=title)
@@ -369,6 +370,11 @@ class BatteryInsightApp:
         if paths:
             self.task("장표 근거 등록", lambda: library.import_documents(self.project_root(), paths), after=lambda result: self.reload_documents())
 
+    def open_traceability(self):
+        from .traceability_ui import TraceWindow
+        selected = self.tree.selection()
+        TraceWindow(self, selected[0] if selected else None)
+
     def reload_documents(self):
         from .knowledge_registry import KnowledgeRegistry
         path = self.project_root() / "knowledge/knowledge.sqlite3"
@@ -509,6 +515,7 @@ def launch(project=None):
 
 
 def check_gui(project):
+    from .traceability_ui import TraceWindow
     root = tk.Tk()
     root.withdraw()
     app = BatteryInsightApp(root, project)
@@ -518,6 +525,7 @@ def check_gui(project):
                   "no_llm_configuration": True, "idle": not app.busy, "project_selected": app.project_root() == Path(project).resolve(),
                   "queue_initially_empty": not app.conversion_queue.sources,
                   "explicit_start_button": app.conversion_queue.start_button.cget("text") == "시작"}
+        checks["traceability_window_module_available"] = callable(TraceWindow)
         return {"status": "success" if all(checks.values()) else "failed", "checks": checks}
     finally:
         app.close()
