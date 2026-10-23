@@ -1,7 +1,7 @@
-BatteryInsight 3.2.1 통합판 — 개발/재빌드 안내
+BatteryInsight 3.3.0 통합판 — 개발/재빌드 안내
 
 일반 사용자는 배포 ZIP의 BatteryInsight.exe만 실행합니다.
-대상 컴퓨터에 Python, 인터넷, API 키가 필요하지 않습니다.
+기본 변환·DB·비교는 Python, 인터넷, API 키가 필요하지 않습니다. 선택 Copilot 해석은 회사 CLI·로그인·통신이 필요합니다.
 
 빌드 검증 환경: Windows 11 x64 / Python 3.12.10 x64.
 requirements-integrated-build.txt에 기록한 패키지가 설치된 빌드 컴퓨터에서:

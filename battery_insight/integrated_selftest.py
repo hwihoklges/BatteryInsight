@@ -84,5 +84,8 @@ def run_self_test():
             all(edge["relation"] != "conditioned_for" for edge in lineage["edges"])
         checks["ppt_archives_are_project_local"] = all(item["proof"]["valid"] and item["proof"]["archived"] for item in lineage["documents"])
         checks["offline_lineage_report"] = build_report(demo_project).is_file()
+        from .copilot_cli import prepare
+        requests = prepare(demo_project, [lineage["documents"][0]["document_id"]])
+        checks["copilot_requests_build_offline_without_cli"] = requests["count"] > 0 and requests["llm_calls"] == 0
     return {"status": "success" if all(checks.values()) else "failed", "checks": checks,
             "runtime": {"frozen": bool(getattr(sys, "frozen", False)), "python": sys.version.split()[0]}, "llm_calls": 0}

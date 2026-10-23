@@ -1,58 +1,71 @@
 {
   "application": "BatteryInsight",
-  "version": "3.2.1",
-  "exe_sha256": "3f36f30a5793c083271aead848410994249d891d1c6e0cd1d7f0e5c695c31588",
-  "exe_bytes": 105568214,
+  "version": "3.3.0",
+  "exe_sha256": "10338874c46d7cff5aa6708a1bc713e3e87e1d6b935e0ffdc2070c4ccadb2438",
+  "exe_bytes": 105602077,
   "tests": {
     "current_related": {
-      "tests": "67",
+      "tests": "80",
       "errors": "0",
       "failures": "0",
       "skipped": "0"
     },
-    "previous_release_regression": {
-      "version": "3.2.0",
-      "scope": "3.2.0 baseline before removing dedicated WIP presentation/demo; not a new full-suite run",
+    "previous_release_baseline": {
+      "version": "3.2.1",
+      "scope": "3.2.1 baseline before optional Copilot CLI integration; not a new full-suite run",
       "results": {
-        "tests": "653",
-        "errors": "0",
-        "failures": "0",
-        "skipped": "0",
-        "initial_run": {
-          "tests": "653",
-          "errors": "0",
-          "failures": "1",
-          "skipped": "0"
-        },
-        "targeted_rerun": {
-          "tests": "18",
+        "current_related": {
+          "tests": "67",
           "errors": "0",
           "failures": "0",
           "skipped": "0"
         },
-        "resolved_on_rerun": [
-          {
-            "classname": "tests.test_integrated_desktop",
-            "name": "test_real_gui_worker_conversion_and_local_workbench",
-            "initial_failure": "Installed Tk button.tcl temporarily unavailable during tk.Tk()",
-            "rerun": "Passed unchanged; targeted rerun has 18 passing tests"
+        "previous_release_regression": {
+          "version": "3.2.0",
+          "scope": "3.2.0 baseline before removing dedicated WIP presentation/demo; not a new full-suite run",
+          "results": {
+            "tests": "653",
+            "errors": "0",
+            "failures": "0",
+            "skipped": "0",
+            "initial_run": {
+              "tests": "653",
+              "errors": "0",
+              "failures": "1",
+              "skipped": "0"
+            },
+            "targeted_rerun": {
+              "tests": "18",
+              "errors": "0",
+              "failures": "0",
+              "skipped": "0"
+            },
+            "resolved_on_rerun": [
+              {
+                "classname": "tests.test_integrated_desktop",
+                "name": "test_real_gui_worker_conversion_and_local_workbench",
+                "initial_failure": "Installed Tk button.tcl temporarily unavailable during tk.Tk()",
+                "rerun": "Passed unchanged; targeted rerun has 18 passing tests"
+              }
+            ]
           }
-        ]
+        }
       }
     }
   },
   "frozen_execution": {
     "status": "passed",
-    "scope": "Same Windows host with no Python on child PATH and no PYTHON* variables; not a clean-PC/firewall isolation test. Current traceability workflow uses SYNTHETIC PPT and CYC; no actual manufacturing PPT supplied.",
+    "scope": "Same Windows host with no Python on child PATH and no PYTHON* variables; not a clean-PC/firewall isolation test. Synthetic PPT/CYC only. Copilot adapter uses a SIMULATED CLI launched through Windows CMD, not actual GitHub/enterprise authentication or model inference.",
     "summary": {
       "synthetic_entities": 6,
       "synthetic_tests": 2,
       "synthetic_raw_files": 2,
       "synthetic_records": 8,
-      "selftest_checks": 22,
-      "gui_checks": 8,
+      "selftest_checks": 23,
+      "gui_checks": 9,
       "actual_ppts": 0,
-      "llm_calls": 0
+      "actual_company_copilot_calls": 0,
+      "simulated_copilot_calls": 1
     },
     "selftest_checks": {
       "native_conversion_and_auto_registration": true,
@@ -76,7 +89,8 @@
       "ppt_process_cell_test_raw_lineage": true,
       "independent_cell_test_links": true,
       "ppt_archives_are_project_local": true,
-      "offline_lineage_report": true
+      "offline_lineage_report": true,
+      "copilot_requests_build_offline_without_cli": true
     },
     "gui_checks": {
       "hidden": true,
@@ -86,7 +100,8 @@
       "project_selected": true,
       "queue_initially_empty": true,
       "explicit_start_button": true,
-      "traceability_window_module_available": true
+      "traceability_window_module_available": true,
+      "company_copilot_window_module_available": true
     },
     "checks": {
       "no_python_on_child_path": true,
@@ -95,7 +110,11 @@
       "slide_archives_portable": true,
       "explicit_raw_hash_verification": true,
       "graph_assets_available": true,
-      "existing_comparison_pipeline": true
+      "existing_comparison_pipeline": true,
+      "copilot_portable_request_response": true,
+      "copilot_stdin_unicode_cmd_bridge": true,
+      "copilot_candidates_only": true,
+      "copilot_cache_avoids_repeated_call": true
     }
   },
   "existing_comparison_browser": {
@@ -134,9 +153,9 @@
   "runtime_audit": {
     "status": "passed",
     "scope": "Static Analysis TOC and PE imports; Windows system DLLs excluded. Runtime tested separately.",
-    "analysis_sha256": "0f05f137c0af24f14b6131aa611bdd423b2e8399ed1128c7c435680e48200a58",
+    "analysis_sha256": "de0b79276a2453cfdd580131c98b39cf385aa1b992c9702032ec69222407f675",
     "binary_files": 237,
-    "python_modules": 2181,
+    "python_modules": 2183,
     "dll_references": 2220,
     "missing_non_os_dlls": [],
     "external_vc_runtime": [],
@@ -168,7 +187,7 @@
     "unresolved_distributions": [],
     "ml_modules_present": []
   },
-  "embedded_artifacts_verified": 72,
+  "embedded_artifacts_verified": 74,
   "build": {
     "python": "3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]",
     "platform": "Windows-11-10.0.26100-SP0",
@@ -189,14 +208,16 @@
     "format": "single-file windowed EXE"
   },
   "scope": [
-    "Single offline Windows x64 executable; no Python installation/API key required",
+    "Windows x64 executable; core conversion/database/comparison need no Python installation/API key/network",
     "Native CYC 4100/4101 -> all-record Parquet -> catalogue -> reviewed classification -> document links -> existing workbench",
     "Project-local converted Parquet paths are relative; external folders remain references",
-    "No LLM calls or ML training; official AIM formulas remain unconfigured unless verified export supplied",
+    "Core conversion/database/comparison make no LLM calls; optional Copilot CLI uses company login/network/subscription",
+    "No ML training; official AIM formulas remain unconfigured unless verified export supplied",
     "Native units require confirmation before SI profile metrics; current/CC/CV-dependent metrics require richer inputs",
     "Current PPT/process/raw workflow verified on synthetic examples; no actual manufacturing PPT supplied",
     "No dedicated WIP before/after classification; generic process/cell/test links and identity/date checks retained",
-    "Local LLM/RAG integration is a documented future plan, not implemented or bundled",
+    "Copilot text/table extraction and portable request/result transfer verified using a simulated CLI; actual company CLI/login unavailable",
+    "No local model or alternate API; image understanding and free-form DB questions not implemented",
     "Archived PPT evidence, field-level citations, revision-bound edges and review states retained"
   ],
   "unchanged_native_4101_engine_baseline": {

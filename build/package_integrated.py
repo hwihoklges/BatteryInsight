@@ -23,23 +23,23 @@ def sha(path):
 def main():
     from PyInstaller.archive.readers import CArchiveReader
     exe = PROJECT / "dist/BatteryInsight.exe"
-    frozen = json.loads((ROOT / "work/traceability_321_frozen_qa/report.json").read_text(encoding="utf-8"))
+    frozen = json.loads((ROOT / "work/copilot_frozen_qa/report.json").read_text(encoding="utf-8"))
     browser = json.loads((ROOT / "work/integrated_browser_qa/report.json").read_text(encoding="utf-8"))
     audit = json.loads((PROJECT / "build/runtime_audit.json").read_text(encoding="utf-8"))
     if any(report["status"] != "passed" for report in (frozen, browser, audit)):
         raise SystemExit("Frozen, browser and dependency checks must pass before release.")
     if sha(exe) != frozen["exe_sha256"]:
         raise SystemExit("The executable changed after frozen QA.")
-    suite = ET.parse(ROOT / "work/traceability_321_tests.xml").getroot().find("testsuite")
+    suite = ET.parse(ROOT / "work/copilot_release_tests.xml").getroot().find("testsuite")
     if suite is None or int(suite.attrib["errors"]) or int(suite.attrib["failures"]) or int(suite.attrib["skipped"]):
         raise SystemExit("All current related tests must pass.")
-    baseline = json.loads((ROOT / "work/traceability_320_validation.json").read_text(encoding="utf-8"))
-    if baseline["version"] != "3.2.0" or baseline["tests"]["regression"]["failures"] != "0":
+    baseline = json.loads((ROOT / "work/copilot_321_validation.json").read_text(encoding="utf-8"))
+    if baseline["version"] != "3.2.1" or baseline["tests"]["current_related"]["failures"] != "0":
         raise SystemExit("The previous release regression baseline is invalid.")
     suites = {"current_related": {key: suite.attrib[key] for key in ("tests", "errors", "failures", "skipped")},
-              "previous_release_regression": {"version": baseline["version"],
-                  "scope": "3.2.0 baseline before removing dedicated WIP presentation/demo; not a new full-suite run",
-                  "results": baseline["tests"]["regression"]}}
+              "previous_release_baseline": {"version": baseline["version"],
+                  "scope": "3.2.1 baseline before optional Copilot CLI integration; not a new full-suite run",
+                  "results": baseline["tests"]}}
     archive = CArchiveReader(str(exe))
     entries = {name.replace("\\", "/"): name for name in archive.toc}
     checked = {}
@@ -58,20 +58,22 @@ def main():
     compatibility = json.loads((ROOT / "work/traceability_321_compatibility.json").read_text(encoding="utf-8"))
     if not compatibility["all_existing_edges_readable"] or not compatibility["raw_links_valid"]:
         raise SystemExit("Existing reviewed project links must remain readable.")
-    validation = {"application": "BatteryInsight", "version": "3.2.1", "exe_sha256": sha(exe), "exe_bytes": exe.stat().st_size,
+    validation = {"application": "BatteryInsight", "version": "3.3.0", "exe_sha256": sha(exe), "exe_bytes": exe.stat().st_size,
         "tests": suites, "frozen_execution": {"status": frozen["status"], "scope": frozen["scope"], "summary": frozen["summary"],
             "selftest_checks": frozen["selftest_checks"], "gui_checks": frozen["gui_checks"], "checks": frozen["checks"]},
         "existing_comparison_browser": browser, "traceability_browser": trace_browser, "existing_project_compatibility": compatibility,
         "runtime_audit": audit, "embedded_artifacts_verified": len(checked),
         "build": json.loads((PROJECT / "build/build_environment.json").read_text(encoding="utf-8")),
-        "scope": ["Single offline Windows x64 executable; no Python installation/API key required",
+        "scope": ["Windows x64 executable; core conversion/database/comparison need no Python installation/API key/network",
             "Native CYC 4100/4101 -> all-record Parquet -> catalogue -> reviewed classification -> document links -> existing workbench",
             "Project-local converted Parquet paths are relative; external folders remain references",
-            "No LLM calls or ML training; official AIM formulas remain unconfigured unless verified export supplied",
+            "Core conversion/database/comparison make no LLM calls; optional Copilot CLI uses company login/network/subscription",
+            "No ML training; official AIM formulas remain unconfigured unless verified export supplied",
             "Native units require confirmation before SI profile metrics; current/CC/CV-dependent metrics require richer inputs",
             "Current PPT/process/raw workflow verified on synthetic examples; no actual manufacturing PPT supplied",
             "No dedicated WIP before/after classification; generic process/cell/test links and identity/date checks retained",
-            "Local LLM/RAG integration is a documented future plan, not implemented or bundled",
+            "Copilot text/table extraction and portable request/result transfer verified using a simulated CLI; actual company CLI/login unavailable",
+            "No local model or alternate API; image understanding and free-form DB questions not implemented",
             "Archived PPT evidence, field-level citations, revision-bound edges and review states retained"]}
     patch_qa = json.loads((ROOT / "work/cyc_4101_patch_qa/report.json").read_text(encoding="utf-8"))
     if patch_qa["status"] != "passed":
@@ -113,7 +115,7 @@ def main():
     temporary = runtime_zip.with_name(runtime_zip.name + "." + uuid.uuid4().hex + ".tmp")
     with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as bundle:
         bundle.write(exe, exe.name)
-        for name in ("바로실행.cmd", "통합판_시작.txt", "통합사용안내.html", "TRACEABILITY.md", "THIRD_PARTY_NOTICES.txt", "SHA256.txt"):
+        for name in ("바로실행.cmd", "통합판_시작.txt", "통합사용안내.html", "TRACEABILITY.md", "COPILOT.md", "THIRD_PARTY_NOTICES.txt", "SHA256.txt"):
             bundle.write(PROJECT / name, name)
         bundle.write(PROJECT / "INTEGRATED_VALIDATION.json", "VALIDATION.json")
         bundle.write(source_zip, "source/BatteryInsight_source.zip")

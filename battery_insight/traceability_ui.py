@@ -91,6 +91,7 @@ class TraceWindow:
         for text, command in (("등록 묶음 JSON 가져오기", self.import_bundle), ("이력 JSON 내보내기", self.export),
                               ("선택 항목 수정 이력", self.history), ("합성 예제를 새 프로젝트로 만들기", self.demo)):
             self.button(advanced, text, command).pack(side="left", padx=(0, 5))
+        self.button(advanced, "회사 Copilot CLI", self.open_copilot).pack(side="left", padx=(0, 5))
         self.book = ttk.Notebook(outer)
         self.book.pack(fill="both", expand=True)
         self.proposal_tab, self.entity_tab, self.raw_tab = (ttk.Frame(self.book, padding=10) for _ in range(3))
@@ -211,6 +212,13 @@ class TraceWindow:
     def extract(self):
         from .slide_candidates import extract_proposals
         self.perform("PPT의 명시된 표·항목을 검토 대기로 추출", lambda: extract_proposals(self.project), after=lambda result: self.refresh())
+
+    def open_copilot(self):
+        from .copilot_ui import CopilotWindow
+        try:
+            CopilotWindow(self)
+        except (ValueError, OSError) as exc:
+            messagebox.showerror("Copilot 설정 읽기", str(exc), parent=self.window)
 
     @staticmethod
     def selected(tree, mapping):

@@ -1,4 +1,4 @@
-BatteryInsight 3.2.1 — 오프라인 통합판
+BatteryInsight 3.3.0 — 오프라인 통합판
 
 ZIP 전체 압축 해제 → BatteryInsight.exe 또는 바로실행.cmd 실행
 
@@ -9,8 +9,8 @@ ZIP 전체 압축 해제 → BatteryInsight.exe 또는 바로실행.cmd 실행
 5. '지표·관계망·분석'에서 비교 작업실 열기
 
 기능과 지표는 비교 작업실에서 각각 켜고 끌 수 있습니다.
-반복 실행에 ChatGPT/Codex 요청, Python 설치, 인터넷, API 키가 필요 없습니다.
-실행 시 AI 토큰 사용량은 0입니다. 시작할 때 내장 환경을 푸는 시간이 걸립니다.
+기본 변환·DB·비교는 Python 설치, 인터넷, API 키가 필요 없습니다. 선택 Copilot 해석은 회사 CLI·로그인·통신이 필요합니다.
+변환·DB·비교는 LLM을 호출하지 않습니다. Copilot 해석은 회사 구독의 이용량에 반영될 수 있습니다. 시작할 때 내장 환경을 푸는 시간이 걸립니다.
 
 CYC 원본 숫자는 그대로 보존합니다. 전압/용량 단위를 확인한 뒤 물리 단위 지표를 계산합니다.
 파일명 날짜·세트는 후보이며 자동 확정하지 않습니다. 단위나 실험명을 추측하지 않습니다.
@@ -23,3 +23,6 @@ CTS가 없어도 전체 기록을 저장합니다. _org 등 사본도 각각 보
 사용 안내: 통합사용안내.html
 실행 검증: VALIDATION.json / 외부 구성요소: THIRD_PARTY_NOTICES.txt
 Windows 10/11 x64 대상, Windows 11 x64 검증. 입력은 검증된 PNE CYC 4100/4101입니다.
+
+회사 LLM 연결: 공정 추적 창 → 회사 Copilot CLI (COPILOT.md 참조).
+오프라인 데이터 PC는 요청 JSON을 만들고 회사 PC의 응답을 가져올 수 있습니다.

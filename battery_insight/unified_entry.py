@@ -13,7 +13,8 @@ from . import __version__
 
 COMMANDS = {"desktop", "cyc-import", "library-scan", "library-export", "library-assign", "library-rules",
             "library-open", "library-documents", "library-candidates", "library-link", "library-features", "self-test", "check-gui", "version",
-            "trace-extract", "trace-import", "trace-review", "trace-report", "trace-export", "trace-demo"}
+            "trace-extract", "trace-import", "trace-review", "trace-report", "trace-export", "trace-demo",
+            "copilot-check", "copilot-prepare", "copilot-run", "copilot-import"}
 
 
 class Parser(argparse.ArgumentParser):
@@ -102,6 +103,8 @@ def main(argv=None):
             parser.add_argument("--proposal")
             parser.add_argument("--action", choices=["accepted", "dismissed"], default="accepted")
             parser.add_argument("--verify-raw", action="store_true")
+            parser.add_argument("--copilot-exe")
+            parser.add_argument("--copilot-model")
             parser.add_argument("--metadata", type=Path)
             parser.add_argument("--rules", type=Path)
             parser.add_argument("--spec", type=Path)
@@ -123,6 +126,30 @@ def main(argv=None):
                     from .desktop import check_gui
                     with tempfile.TemporaryDirectory(prefix="batteryinsight_gui_") as temporary:
                         result = check_gui(args.project or Path(temporary) / "project")
+            elif args.command.startswith("copilot-"):
+                from . import copilot_cli
+                settings = copilot_cli.config(args.project) if args.project else copilot_cli.checked_config({})
+                if args.copilot_exe:
+                    settings["executable"] = args.copilot_exe
+                if args.copilot_model is not None:
+                    settings["model"] = args.copilot_model
+                settings = copilot_cli.checked_config(settings)
+                if args.command == "copilot-check":
+                    result = copilot_cli.check_cli(settings)
+                elif args.command == "copilot-run":
+                    if not args.input:
+                        raise ValueError("--input Copilot 요청 JSON이 필요합니다.")
+                    result = copilot_cli.run_request(args.input, settings, output=args.out)
+                else:
+                    if not args.project:
+                        raise ValueError("--project로 프로젝트 폴더를 지정하세요.")
+                    if args.command == "copilot-prepare":
+                        result = copilot_cli.prepare(args.project, args.documents)
+                    else:
+                        if not args.input:
+                            raise ValueError("--input Copilot 응답 JSON이 필요합니다.")
+                        result = copilot_cli.import_result(args.project, args.input)
+                result = {"status": "success", **result}
             else:
                 if args.project is None:
                     raise ValueError("--project로 프로젝트 폴더를 지정하세요.")

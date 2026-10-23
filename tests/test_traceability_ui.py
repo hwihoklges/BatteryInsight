@@ -41,6 +41,15 @@ def test_real_trace_window_loads_reviewed_ppt_and_opens_verified_raw_graph(tmp_p
         root.update_idletasks()
         assert editor.winfo_exists()
         editor.destroy()
+        from battery_insight.copilot_ui import CopilotWindow
+        copilot = CopilotWindow(window)
+        assert copilot.documents.size() == 1
+        copilot.documents.selection_set(0)
+        copilot.prepare()
+        pump(root, app)
+        assert list((project / "knowledge/copilot/requests").glob("*.json"))
+        assert not list((project / "knowledge/copilot/requests").glob("*.result.json"))
+        copilot.window.destroy()
     finally:
         if app.worker and app.worker.is_alive():
             app.worker.join(30)

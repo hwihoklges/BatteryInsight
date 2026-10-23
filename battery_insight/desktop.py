@@ -516,6 +516,7 @@ def launch(project=None):
 
 def check_gui(project):
     from .traceability_ui import TraceWindow
+    from .copilot_ui import CopilotWindow
     root = tk.Tk()
     root.withdraw()
     app = BatteryInsightApp(root, project)
@@ -526,6 +527,7 @@ def check_gui(project):
                   "queue_initially_empty": not app.conversion_queue.sources,
                   "explicit_start_button": app.conversion_queue.start_button.cget("text") == "시작"}
         checks["traceability_window_module_available"] = callable(TraceWindow)
+        checks["company_copilot_window_module_available"] = callable(CopilotWindow)
         return {"status": "success" if all(checks.values()) else "failed", "checks": checks}
     finally:
         app.close()
