@@ -75,22 +75,13 @@ def run_self_test():
         checks["4100_and_4101_native_contracts"] = native_self_test()["status"] == "success"
         from .traceability_demo import create_demo
         from .traceability import snapshot as trace_snapshot
-        from .traceability_report import build_report, graph_data
+        from .traceability_report import build_report
         demo_project = base / "합성 공정 이력"
         create_demo(demo_project)
         lineage = trace_snapshot(demo_project)
         checks["ppt_process_cell_test_raw_lineage"] = len(lineage["entities"]) == 6 and len(lineage["records"]) == 2 and all(item["valid"] for item in lineage["raw_links"])
-        graph = graph_data(lineage)
-        wip = next(item for item in lineage["entities"] if item["process_type"] == "WIP")
-        bol = next(item for item in lineage["records"] if item["rpt_stage"] == "BOL")
-        pending, ancestors = ["record:" + bol["record_id"]], set()
-        while pending:
-            current = pending.pop()
-            for edge in graph["edges"]:
-                if edge["target"] == current and edge["source"] not in ancestors and edge["status"] == "confirmed":
-                    ancestors.add(edge["source"])
-                    pending.append(edge["source"])
-        checks["later_wip_not_in_earlier_rpt_lineage"] = "entity:" + wip["entity_id"] not in ancestors
+        checks["independent_cell_test_links"] = len({row["physical_cell_id"] for row in lineage["records"]}) == 2 and \
+            all(edge["relation"] != "conditioned_for" for edge in lineage["edges"])
         checks["ppt_archives_are_project_local"] = all(item["proof"]["valid"] and item["proof"]["archived"] for item in lineage["documents"])
         checks["offline_lineage_report"] = build_report(demo_project).is_file()
     return {"status": "success" if all(checks.values()) else "failed", "checks": checks,

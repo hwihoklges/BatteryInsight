@@ -1,8 +1,8 @@
 """Reviewed manufacturing genealogy joined to existing experiment/raw links.
 
 No inference from names or document proximity. Every confirmed edge binds the
-exact endpoint revisions and slide evidence. Treatment-to-test links are explicit
-so a later WIP does not become an ancestor of a pre-WIP RPT on the same cell.
+exact endpoint revisions and slide evidence. There is no process-specific
+before/after classification; existing reviewed links remain readable.
 """
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ from .knowledge_registry import KnowledgeRegistry
 
 KINDS = {"material_lot": "소재 로트", "electrode_lot": "전극·전해질막 로트", "process_run": "공정 실행", "cell": "물리 셀"}
 RELATIONS = {"consumed_in": "투입", "processed_in": "공정 대상", "produces": "산출", "tested_as": "셀 시험",
-             "conditioned_for": "시험 전 공정 적용", "precedes": "공정 선후"}
+             "conditioned_for": "공정·시험 연결", "precedes": "공정 선후"}
 STATUSES = {"draft", "confirmed", "retired"}
 
 
@@ -197,7 +197,7 @@ def _acyclic(edges):
             if not indegree[target]:
                 ready.append(target)
     if visited != len(indegree):
-        raise ValueError("공정 연결에 순환이 있습니다. 동일 셀의 후처리는 processed_in → conditioned_for로 시험에 연결하세요.")
+        raise ValueError("공정 연결에 순환이 있습니다. 투입·공정·산출 연결의 방향을 확인하세요.")
 
 
 def save_bundle(project, payload, *, reviewer="local_user", reason="장표 근거 확인"):
@@ -283,7 +283,7 @@ def save_bundle(project, payload, *, reviewer="local_user", reason="장표 근�
                 left_date = source.get("performed_on")
                 right_date = target.get("performed_on") if tk != "record" else target.get("test_date") if target.get("date_kind") == "test_start" else None
                 if left_date and right_date and left_date > right_date:
-                    raise ValueError("공정·제조일이 후속 공정/시험 시작일보다 늦습니다. WIP 이후 이력을 이전 RPT에 연결할 수 없습니다.")
+                    raise ValueError("공정·제조일이 후속 공정/시험 시작일보다 늦습니다. 날짜와 연결 방향을 확인하세요.")
             item["bindings"] = {"source_hash": source["content_hash"], "target_hash": target["content_hash"]}
             saved = _put(db, "edges", key, item, reviewer, reason)
             edges[key] = saved

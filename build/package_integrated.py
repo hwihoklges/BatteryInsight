@@ -23,39 +23,23 @@ def sha(path):
 def main():
     from PyInstaller.archive.readers import CArchiveReader
     exe = PROJECT / "dist/BatteryInsight.exe"
-    frozen = json.loads((ROOT / "work/traceability_frozen_qa/report.json").read_text(encoding="utf-8"))
+    frozen = json.loads((ROOT / "work/traceability_321_frozen_qa/report.json").read_text(encoding="utf-8"))
     browser = json.loads((ROOT / "work/integrated_browser_qa/report.json").read_text(encoding="utf-8"))
     audit = json.loads((PROJECT / "build/runtime_audit.json").read_text(encoding="utf-8"))
     if any(report["status"] != "passed" for report in (frozen, browser, audit)):
         raise SystemExit("Frozen, browser and dependency checks must pass before release.")
     if sha(exe) != frozen["exe_sha256"]:
         raise SystemExit("The executable changed after frozen QA.")
-    suite = ET.parse(ROOT / "work/battery_insight_traceability_all_tests.xml").getroot().find("testsuite")
-    rerun = ET.parse(ROOT / "work/traceability_final_targeted.xml").getroot().find("testsuite")
-    if suite is None or rerun is None or int(suite.attrib["errors"]) or int(rerun.attrib["errors"]) or int(rerun.attrib["failures"]):
-        raise SystemExit("All required tests and the targeted rerun must pass.")
-    counts = lambda item: {key: item.attrib[key] for key in ("tests", "errors", "failures", "skipped")}
-    passed_reruns = {(item.attrib["classname"], item.attrib["name"]) for item in rerun.findall("testcase")
-                     if not any(item.find(tag) is not None for tag in ("failure", "error", "skipped"))}
-    resolved = []
-    for case in suite.findall("testcase"):
-        failure = case.find("failure")
-        if failure is None:
-            continue
-        key = (case.attrib["classname"], case.attrib["name"])
-        # Retain the initial failure in release evidence. Only this observed
-        # source-Python Tk initialization failure may use the unchanged rerun;
-        # application/assertion failures must never be hidden by packaging.
-        if key != ("tests.test_integrated_desktop", "test_real_gui_worker_conversion_and_local_workbench") or \
-                "button.tcl" not in (failure.text or "") or "no such file or directory" not in (failure.text or "") or key not in passed_reruns:
-            raise SystemExit("Unresolved regression failure: " + str(key))
-        resolved.append({"classname": key[0], "name": key[1],
-                         "initial_failure": "Installed Tk button.tcl temporarily unavailable during tk.Tk()",
-                         "rerun": "Passed unchanged; targeted rerun has 18 passing tests"})
-    if len(resolved) != int(suite.attrib["failures"]):
-        raise SystemExit("Regression report failure count mismatch.")
-    suites = {"regression": {**counts(suite), "failures": "0", "initial_run": counts(suite),
-                              "targeted_rerun": counts(rerun), "resolved_on_rerun": resolved}}
+    suite = ET.parse(ROOT / "work/traceability_321_tests.xml").getroot().find("testsuite")
+    if suite is None or int(suite.attrib["errors"]) or int(suite.attrib["failures"]) or int(suite.attrib["skipped"]):
+        raise SystemExit("All current related tests must pass.")
+    baseline = json.loads((ROOT / "work/traceability_320_validation.json").read_text(encoding="utf-8"))
+    if baseline["version"] != "3.2.0" or baseline["tests"]["regression"]["failures"] != "0":
+        raise SystemExit("The previous release regression baseline is invalid.")
+    suites = {"current_related": {key: suite.attrib[key] for key in ("tests", "errors", "failures", "skipped")},
+              "previous_release_regression": {"version": baseline["version"],
+                  "scope": "3.2.0 baseline before removing dedicated WIP presentation/demo; not a new full-suite run",
+                  "results": baseline["tests"]["regression"]}}
     archive = CArchiveReader(str(exe))
     entries = {name.replace("\\", "/"): name for name in archive.toc}
     checked = {}
@@ -68,13 +52,17 @@ def main():
         checked[name] = hashlib.sha256(archive.extract(entries[name])).hexdigest() == sha(path)
     if not all(checked.values()):
         raise SystemExit("Embedded code/assets/notices differ from released source.")
-    trace_browser = json.loads((ROOT / "work/traceability_browser_qa/report.json").read_text(encoding="utf-8"))
+    trace_browser = json.loads((ROOT / "work/traceability_321_browser_qa/report.json").read_text(encoding="utf-8"))
     if trace_browser["status"] != "passed":
         raise SystemExit("Traceability browser checks must pass.")
-    validation = {"application": "BatteryInsight", "version": "3.2.0", "exe_sha256": sha(exe), "exe_bytes": exe.stat().st_size,
+    compatibility = json.loads((ROOT / "work/traceability_321_compatibility.json").read_text(encoding="utf-8"))
+    if not compatibility["all_existing_edges_readable"] or not compatibility["raw_links_valid"]:
+        raise SystemExit("Existing reviewed project links must remain readable.")
+    validation = {"application": "BatteryInsight", "version": "3.2.1", "exe_sha256": sha(exe), "exe_bytes": exe.stat().st_size,
         "tests": suites, "frozen_execution": {"status": frozen["status"], "scope": frozen["scope"], "summary": frozen["summary"],
             "selftest_checks": frozen["selftest_checks"], "gui_checks": frozen["gui_checks"], "checks": frozen["checks"]},
-        "existing_comparison_browser": browser, "traceability_browser": trace_browser, "runtime_audit": audit, "embedded_artifacts_verified": len(checked),
+        "existing_comparison_browser": browser, "traceability_browser": trace_browser, "existing_project_compatibility": compatibility,
+        "runtime_audit": audit, "embedded_artifacts_verified": len(checked),
         "build": json.loads((PROJECT / "build/build_environment.json").read_text(encoding="utf-8")),
         "scope": ["Single offline Windows x64 executable; no Python installation/API key required",
             "Native CYC 4100/4101 -> all-record Parquet -> catalogue -> reviewed classification -> document links -> existing workbench",
@@ -82,7 +70,8 @@ def main():
             "No LLM calls or ML training; official AIM formulas remain unconfigured unless verified export supplied",
             "Native units require confirmation before SI profile metrics; current/CC/CV-dependent metrics require richer inputs",
             "Current PPT/process/raw workflow verified on synthetic examples; no actual manufacturing PPT supplied",
-            "Same-cell post-processing is explicitly linked to the relevant test; physical cell IDs and dates checked",
+            "No dedicated WIP before/after classification; generic process/cell/test links and identity/date checks retained",
+            "Local LLM/RAG integration is a documented future plan, not implemented or bundled",
             "Archived PPT evidence, field-level citations, revision-bound edges and review states retained"]}
     patch_qa = json.loads((ROOT / "work/cyc_4101_patch_qa/report.json").read_text(encoding="utf-8"))
     if patch_qa["status"] != "passed":

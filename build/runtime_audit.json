@@ -1,7 +1,7 @@
 {
   "status": "passed",
   "scope": "Static Analysis TOC and PE imports; Windows system DLLs excluded. Runtime tested separately.",
-  "analysis_sha256": "23836f785f77a4053e5c983e52eecdf58998e4874ef6e72531d988966b33ff35",
+  "analysis_sha256": "0f05f137c0af24f14b6131aa611bdd423b2e8399ed1128c7c435680e48200a58",
   "binary_files": 237,
   "python_modules": 2181,
   "dll_references": 2220,

@@ -9,11 +9,11 @@ from pathlib import Path
 
 REQUIREMENTS = [
     {"field": "document / evidence", "label": "장표와 근거 위치", "priority": "등록 필수", "detail": "원본 파일, 슬라이드/페이지/표의 위치, 해당 문구를 기록합니다. 그림만 있으면 판독 대기로 남깁니다."},
-    {"field": "experiment_name", "label": "실험명·목적", "priority": "확정 필수", "detail": "예: 구동압 비교, WIP 전후, RPT BOL. 제목이 넓은 주제이면 각 표·샘플의 실제 시험 목적을 별도로 확인합니다."},
+    {"field": "experiment_name", "label": "실험명·목적", "priority": "확정 필수", "detail": "예: 구동압 비교, 로딩 비교, RPT BOL. 제목이 넓은 주제이면 각 표·샘플의 실제 시험 목적을 별도로 확인합니다."},
     {"field": "sample_id / sample_name", "label": "샘플 식별자·표기명", "priority": "확정 필수", "detail": "장표에 쓰인 이름과 내부 식별자를 구분합니다. 동일 샘플의 약어·별칭은 명시적으로 등록하며, 비슷한 이름을 자동으로 합치지 않습니다."},
     {"field": "test_date / date_kind", "label": "날짜와 그 의미", "priority": "raw 후보 연결 필수", "detail": "시험 시작일·종료일·제조일·보고일을 구분합니다. 연결 키에는 확인된 시험 시작일(test_start)만 사용합니다. 연도가 불명확한 6자리 날짜는 확인 전 확정하지 않습니다."},
     {"field": "namespace / set_no", "label": "세트번호와 번호 사용 범위", "priority": "raw 후보 연결 필수", "detail": "세트번호는 문자열로 보관해 001과 1을 구분합니다. 프로젝트·장비 등 번호가 유일해지는 범위(namespace)를 함께 확인합니다."},
-    {"field": "test_type / rpt_stage", "label": "시험 종류·RPT 시점", "priority": "raw 후보 연결 필수", "detail": "Cycle/RPT/DCIR 등의 종류, BOL/100cyc/WIP 전후 등 시점을 따로 기록합니다. RPT 내부 cycle 번호를 수명 cycle로 바꾸지 않습니다."},
+    {"field": "test_type / rpt_stage", "label": "시험 종류·RPT 시점", "priority": "raw 후보 연결 필수", "detail": "Cycle/RPT/DCIR 등의 종류, BOL/100cyc/300cyc 등 시점을 따로 기록합니다. RPT 내부 cycle 번호를 수명 cycle로 바꾸지 않습니다."},
     {"field": "channel_id / raw key", "label": "샘플과 채널의 대응표", "priority": "다중 후보 해소", "detail": "한 세트에 여러 샘플이 있으면 채널·셀 번호·원본 경로 등 대응 근거가 필요합니다. 날짜와 세트가 같아도 일대일 연결을 가정하지 않습니다."},
     {"field": "physical_cell_id", "label": "물리 셀 ID·반복 시험 여부", "priority": "셀 평균·이력 연결", "detail": "같은 샘플명으로 만든 서로 다른 셀과 같은 셀의 후속 RPT를 구분합니다. 실제 동일 셀이라는 근거가 있을 때만 채웁니다."},
     {"field": "design_id / batch_id", "label": "설계·제조 배치", "priority": "설계 비교·셀 평균", "detail": "동일 설계와 제조 배치를 확인합니다. 샘플명이 같다는 이유만으로 같은 설계·배치로 지정하지 않습니다."},

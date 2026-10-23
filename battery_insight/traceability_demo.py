@@ -29,12 +29,12 @@ def create_demo(destination, *, reviewed=True):
         ["process_run", "합성 배합", "", "", "", "SYN-MIX-001", "배합", "2026-01-02", "전극 전체", "65", "", ""],
         ["electrode_lot", "합성 양극 로트", "", "SYN-EL-001", "", "", "", "2026-01-02", "단면", "", "6.3", ""],
         ["process_run", "합성 조립", "", "", "", "SYN-ASM-001", "조립", "2026-01-03", "", "", "", ""],
-        ["cell", "합성 물리 셀", "", "", "SYN-CELL-001", "", "", "2026-01-03", "", "", "", ""],
-        ["process_run", "합성 WIP", "", "", "", "SYN-WIP-001", "WIP", "2026-01-10", "", "", "", "100"],
+        ["cell", "합성 물리 셀 A", "", "", "SYN-CELL-001", "", "", "2026-01-03", "", "", "", ""],
+        ["cell", "합성 물리 셀 B", "", "", "SYN-CELL-002", "", "", "2026-01-03", "", "", "", ""],
     ])
-    table_slide("동일 셀의 WIP 전·후 시험", ["샘플ID", "샘플명", "물리셀ID", "시험명", "시험시작일", "세트번호", "프로젝트", "시험종류", "RPT시점", "설계ID", "배치ID", "온도(°C)", "구동압(MPa)"], [
-        ["SYN-SAMPLE-001", "합성 샘플 A", "SYN-CELL-001", "합성 BOL", "2026-01-05", "001", "synthetic_demo", "RPT", "BOL", "SYN-DESIGN", "SYN-BATCH", "25", "1"],
-        ["SYN-SAMPLE-001", "합성 샘플 A", "SYN-CELL-001", "합성 WIP 이후", "2026-01-11", "001", "synthetic_demo", "RPT", "after_WIP", "SYN-DESIGN", "SYN-BATCH", "25", "1"],
+    table_slide("셀별 시험과 raw 대응", ["샘플ID", "샘플명", "물리셀ID", "시험명", "시험시작일", "세트번호", "프로젝트", "시험종류", "RPT시점", "설계ID", "배치ID", "온도(°C)", "구동압(MPa)"], [
+        ["SYN-SAMPLE-001", "합성 샘플 A", "SYN-CELL-001", "합성 셀 A 시험", "2026-01-05", "001", "synthetic_demo", "RPT", "BOL", "SYN-DESIGN", "SYN-BATCH", "25", "1"],
+        ["SYN-SAMPLE-002", "합성 샘플 B", "SYN-CELL-002", "합성 셀 B 시험", "2026-01-06", "001", "synthetic_demo", "RPT", "BOL", "SYN-DESIGN", "SYN-BATCH", "25", "1"],
     ])
     inputs = root / "inputs"
     inputs.mkdir()
@@ -43,11 +43,11 @@ def create_demo(destination, *, reviewed=True):
     library.import_documents(root, [ppt])
     proposals = extract_proposals(root)
     datasets = {}
-    for stage in ("BOL", "after_WIP"):
-        raw = root / "inputs" / stage
+    for sample in ("SYN-SAMPLE-001", "SYN-SAMPLE-002"):
+        raw = root / "inputs" / sample
         fixture_4101(raw)
         result = library.convert_and_register(root, raw)
-        datasets[stage] = result["output"]
+        datasets[sample] = result["output"]
     if reviewed:
         snap = trace.snapshot(root)
         for candidate in snap["proposals"]:
@@ -60,30 +60,27 @@ def create_demo(destination, *, reviewed=True):
             attrs = entity["attributes"]
             key = attrs.get("process_run_id") or attrs.get("physical_cell_id") or attrs.get("lot_id")
             by_key[key] = entity
-        records = {row["rpt_stage"]: row for row in snap["records"]}
+        records = {row["sample_id"]: row for row in snap["records"]}
         evidence = lambda *keys: sorted({ev for key in keys for ev in by_key[key]["evidence_ids"]})
         definitions = [
             ("SYN-AM-001", "SYN-MIX-001", "consumed_in", "양극 활물질"),
             ("SYN-MIX-001", "SYN-EL-001", "produces", "양극 전극"),
             ("SYN-EL-001", "SYN-ASM-001", "consumed_in", "양극 전극"),
             ("SYN-ASM-001", "SYN-CELL-001", "produces", "조립 셀"),
-            ("SYN-CELL-001", "SYN-WIP-001", "processed_in", "동일 셀 후처리"),
+            ("SYN-ASM-001", "SYN-CELL-002", "produces", "조립 셀"),
         ]
         edges = [{"edge_id": "syn_edge_" + str(index), "source_id": by_key[left]["entity_id"],
                   "target_id": by_key[right]["entity_id"], "relation": relation, "role": role,
                   "status": "confirmed", "evidence_ids": evidence(left, right)}
                  for index, (left, right, relation, role) in enumerate(definitions)]
-        for stage, record in records.items():
-            edges.append({"edge_id": "syn_test_" + stage, "source_id": by_key["SYN-CELL-001"]["entity_id"],
+        for sample, record in records.items():
+            edges.append({"edge_id": "syn_test_" + sample, "source_id": by_key[record["physical_cell_id"]]["entity_id"],
                           "target_id": record["record_id"], "target_kind": "record", "relation": "tested_as", "status": "confirmed",
                           "evidence_ids": record["evidence_ids"]})
-        edges.append({"edge_id": "syn_wip_after", "source_id": by_key["SYN-WIP-001"]["entity_id"],
-                      "target_id": records["after_WIP"]["record_id"], "target_kind": "record", "relation": "conditioned_for",
-                      "status": "confirmed", "evidence_ids": records["after_WIP"]["evidence_ids"]})
         trace.save_bundle(root, {"edges": edges}, reviewer="synthetic_demo", reason="합성 공정·셀·시험 연결 확인")
         for row in library.library_rows(root):
-            stage = next(stage for stage, output in datasets.items() if Path(row["path"]).is_relative_to(Path(output)))
-            library.link_record(root, row["dataset_id"], records[stage]["record_id"], reviewer="synthetic_demo", reason="합성 CYC 대응표 확인")
+            sample = next(sample for sample, output in datasets.items() if Path(row["path"]).is_relative_to(Path(output)))
+            library.link_record(root, row["dataset_id"], records[sample]["record_id"], reviewer="synthetic_demo", reason="합성 CYC 대응표 확인")
     (root / "SYNTHETIC_DEMO.txt").write_text("합성 동작 예제입니다. 실제 공정·설계·시험 조건을 의미하지 않습니다.\n일부 공정과 투입 소재는 개념 설명을 위해 생략했습니다.", encoding="utf-8")
     proposals["pending"] = sum(item["state"] == "pending" for item in trace.snapshot(root)["proposals"])
     return {"status": "success", "project": str(root), "ppt": str(ppt), "reviewed_synthetic": reviewed,

@@ -55,7 +55,7 @@ def build_report(project, *, focus=None, verify=False):
 <select id="direction"><option value="up">선택 항목의 이전 이력</option><option value="down">이후 시험·데이터</option><option value="both">이전 + 이후</option></select>
 <label><input type="checkbox" id="review">초안·재검토 표시</label><label><input type="checkbox" id="unlinked">미연결 raw 표시</label></nav>
 <div id="types"></div><main><section><div id="notice"></div><div id="canvas"><svg id="graph" xmlns="http://www.w3.org/2000/svg"></svg></div>
-<details><summary>이력 시간순 목록</summary><div id="timeline"></div></details></section><aside id="detail"><h2>연결 근거</h2><p>항목을 선택하세요. 같은 셀의 후처리 공정은 해당 시험에 명시적으로 연결할 때만 그 시험의 이전 이력에 포함됩니다.</p></aside></main>
+<details><summary>이력 시간순 목록</summary><div id="timeline"></div></details></section><aside id="detail"><h2>연결 근거</h2><p>항목을 선택하면 공정·셀·시험의 등록 내용과 장표 근거를 볼 수 있습니다. 지도는 검토한 연결을 표시합니다.</p></aside></main>
 <footer>확정은 기록·연결의 검토 상태입니다. 생략된 공정이나 소재가 없다는 보장은 아닙니다. 원본 시계열 전체를 이 페이지에 싣지 않습니다. raw 무결성 ‘catalog_only’는 등록 시점 해시의 대응만 확인한 상태이며 현재 파일을 다시 읽은 검사는 별도입니다.</footer>
 <script type="application/json" id="trace-data">__DATA__</script><script>__JS__</script></html>"""
     html = html.replace("__CSS__", css).replace("__JS__", js).replace("__DATA__", encoded)

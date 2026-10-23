@@ -1,34 +1,44 @@
 {
   "application": "BatteryInsight",
-  "version": "3.2.0",
-  "exe_sha256": "68f92ef73507d8e4b660250e4fc8b1629b54f3b06151b1ffbccf902203b9d221",
-  "exe_bytes": 105569055,
+  "version": "3.2.1",
+  "exe_sha256": "3f36f30a5793c083271aead848410994249d891d1c6e0cd1d7f0e5c695c31588",
+  "exe_bytes": 105568214,
   "tests": {
-    "regression": {
-      "tests": "653",
+    "current_related": {
+      "tests": "67",
       "errors": "0",
       "failures": "0",
-      "skipped": "0",
-      "initial_run": {
+      "skipped": "0"
+    },
+    "previous_release_regression": {
+      "version": "3.2.0",
+      "scope": "3.2.0 baseline before removing dedicated WIP presentation/demo; not a new full-suite run",
+      "results": {
         "tests": "653",
         "errors": "0",
-        "failures": "1",
-        "skipped": "0"
-      },
-      "targeted_rerun": {
-        "tests": "18",
-        "errors": "0",
         "failures": "0",
-        "skipped": "0"
-      },
-      "resolved_on_rerun": [
-        {
-          "classname": "tests.test_integrated_desktop",
-          "name": "test_real_gui_worker_conversion_and_local_workbench",
-          "initial_failure": "Installed Tk button.tcl temporarily unavailable during tk.Tk()",
-          "rerun": "Passed unchanged; targeted rerun has 18 passing tests"
-        }
-      ]
+        "skipped": "0",
+        "initial_run": {
+          "tests": "653",
+          "errors": "0",
+          "failures": "1",
+          "skipped": "0"
+        },
+        "targeted_rerun": {
+          "tests": "18",
+          "errors": "0",
+          "failures": "0",
+          "skipped": "0"
+        },
+        "resolved_on_rerun": [
+          {
+            "classname": "tests.test_integrated_desktop",
+            "name": "test_real_gui_worker_conversion_and_local_workbench",
+            "initial_failure": "Installed Tk button.tcl temporarily unavailable during tk.Tk()",
+            "rerun": "Passed unchanged; targeted rerun has 18 passing tests"
+          }
+        ]
+      }
     }
   },
   "frozen_execution": {
@@ -64,7 +74,7 @@
       "project_local_data_portable": true,
       "4100_and_4101_native_contracts": true,
       "ppt_process_cell_test_raw_lineage": true,
-      "later_wip_not_in_earlier_rpt_lineage": true,
+      "independent_cell_test_links": true,
       "ppt_archives_are_project_local": true,
       "offline_lineage_report": true
     },
@@ -80,6 +90,7 @@
     },
     "checks": {
       "no_python_on_child_path": true,
+      "no_dedicated_wip_split": true,
       "synthetic_ppt_process_cell_test_raw": true,
       "slide_archives_portable": true,
       "explicit_raw_hash_verification": true,
@@ -102,8 +113,9 @@
     "status": "passed",
     "checks": {
       "initial_graph_nodes": true,
-      "before_wip_has_no_future_wip": true,
-      "after_wip_has_wip": true,
+      "cell_a_lineage_only": true,
+      "cell_b_lineage_only": true,
+      "no_dedicated_stage_split": true,
       "human_readable_quantity": true,
       "exact_header_value_evidence": true,
       "archive_file_link": true,
@@ -113,10 +125,16 @@
       "smoke_executed": true
     }
   },
+  "existing_project_compatibility": {
+    "old_project_entities": 6,
+    "old_project_edges": 8,
+    "all_existing_edges_readable": true,
+    "raw_links_valid": true
+  },
   "runtime_audit": {
     "status": "passed",
     "scope": "Static Analysis TOC and PE imports; Windows system DLLs excluded. Runtime tested separately.",
-    "analysis_sha256": "23836f785f77a4053e5c983e52eecdf58998e4874ef6e72531d988966b33ff35",
+    "analysis_sha256": "0f05f137c0af24f14b6131aa611bdd423b2e8399ed1128c7c435680e48200a58",
     "binary_files": 237,
     "python_modules": 2181,
     "dll_references": 2220,
@@ -177,7 +195,8 @@
     "No LLM calls or ML training; official AIM formulas remain unconfigured unless verified export supplied",
     "Native units require confirmation before SI profile metrics; current/CC/CV-dependent metrics require richer inputs",
     "Current PPT/process/raw workflow verified on synthetic examples; no actual manufacturing PPT supplied",
-    "Same-cell post-processing is explicitly linked to the relevant test; physical cell IDs and dates checked",
+    "No dedicated WIP before/after classification; generic process/cell/test links and identity/date checks retained",
+    "Local LLM/RAG integration is a documented future plan, not implemented or bundled",
     "Archived PPT evidence, field-level citations, revision-bound edges and review states retained"
   ],
   "unchanged_native_4101_engine_baseline": {

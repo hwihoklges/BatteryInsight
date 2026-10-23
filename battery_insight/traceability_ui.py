@@ -359,7 +359,7 @@ class TraceWindow:
         window.geometry("940x620")
         form = ttk.Frame(window, padding=16)
         form.pack(fill="both", expand=True)
-        ttk.Label(form, text="후처리는 셀 → 공정 대상(processed_in) → 해당 시험(conditioned_for)으로 연결합니다.\nWIP 전·후 시험을 구분하고, 단지 같은 셀이라는 이유로 후처리를 모든 시험에 붙이지 않습니다.", wraplength=880).pack(anchor="w", pady=8)
+        ttk.Label(form, text="장표에서 확인한 투입·산출·셀·시험 대응만 연결합니다.\n공정 이름으로 시험을 자동 분리하지 않습니다. 셀 ID와 날짜는 일반적인 연결 오류를 확인하는 데 사용합니다.", wraplength=880).pack(anchor="w", pady=8)
         sources = {"[" + row["entity_id"] + "] " + row["name"]: row["entity_id"] for row in self.snap["entities"]}
         targets = {key: ("entity", value) for key, value in sources.items()}
         targets.update({"[시험 " + row["record_id"] + "] " + (row.get("experiment_name") or ""): ("record", row["record_id"]) for row in self.snap["records"]})

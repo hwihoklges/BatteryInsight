@@ -1,4 +1,4 @@
-BatteryInsight 3.2.0 통합판 — 개발/재빌드 안내
+BatteryInsight 3.2.1 통합판 — 개발/재빌드 안내
 
 일반 사용자는 배포 ZIP의 BatteryInsight.exe만 실행합니다.
 대상 컴퓨터에 Python, 인터넷, API 키가 필요하지 않습니다.

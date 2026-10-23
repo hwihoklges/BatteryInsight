@@ -29,7 +29,7 @@ def test_real_trace_window_loads_reviewed_ppt_and_opens_verified_raw_graph(tmp_p
     try:
         pump(root, app)
         assert len(window.entities.get_children()) == 6
-        assert len(window.records.get_children()) == 2 and len(window.edges.get_children()) == 8
+        assert len(window.records.get_children()) == 2 and len(window.edges.get_children()) == 7
         assert all(row["state"] == "accepted" for row in window.by_proposal.values())
         window.raw_choice.set(next(iter(window.dataset_labels)))
         window.open_graph()

@@ -1,4 +1,4 @@
-BatteryInsight 3.2.0 — 오프라인 통합판
+BatteryInsight 3.2.1 — 오프라인 통합판
 
 ZIP 전체 압축 해제 → BatteryInsight.exe 또는 바로실행.cmd 실행
 
