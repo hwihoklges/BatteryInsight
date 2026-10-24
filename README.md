@@ -9,7 +9,7 @@ python -m battery_insight db-build --project D:/BIProject          # 변경된 �
 python -m battery_insight network --project D:/BIProject           # db/network.html 생성 후 열기 (--build-only)
 ```
 
-- 산출물 (`<project>/db/`): `run_profile.parquet`·`run_metrics.parquet`·`run_cycles.parquet`(run=시험×채널 지표), `research.sqlite3`·`research.xlsx`(설계·셀·시험·run·관측·셀/설계 요약·코호트), `identity_gaps.csv`(식별 공백), `design_candidates.csv`(설계 후보 목록), `network.json`·`network.html`.
+- 산출물 (`<project>/db/`): `run_profile.parquet`·`run_metrics.parquet`·`run_cycles.parquet`(run=시험×채널 지표), `research.sqlite3`·`research.xlsx`(설계·셀·시험·run·관측·셀/설계 요약·코호트), `identity_gaps.csv`(식별 공백), `design_candidates.csv`(설계 후보 목록), `metric_validation.csv/json`(라벨 있는 파일에서 기록 사이클 대비 파생 사이클 지표 검증), `network.json`·`network.html`.
 - 설계 확정: `design_candidates.csv`의 행을 `design_map.csv`에 복사하고 `design_id`/`design_label`을 채우면 다음 빌드부터 확정 설계로 묶입니다(`match_type`: test_key > series_key > candidate > tags). `design_map.csv`는 빌드가 덮어쓰지 않습니다.
 - 셀 확정: `dx/dx_files.csv`의 `physical_cell_id`를 채우면 같은 셀의 반복 run이 한 표본(중앙값)으로 묶입니다. 비어 있으면 run 단위 *provisional* 셀입니다.
 - 이상 시험(`dx_tests.csv`의 `anomaly`: 채널 이상 등)은 관측값은 보존하되 셀·설계 요약에서 제외합니다.

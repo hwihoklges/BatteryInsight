@@ -98,10 +98,10 @@ CYC/CTS ──► Parquet(+meta) ──► ① library   데이터셋·단위·�
 | G6 | 시험 온도 미상 405/513 → 코호트 키 대부분 `T?` | 파일명에 온도 근거가 거의 없음(후보 11건도 25/45 혼재). DX 분류표 `temperature_c` 입력이 필요 | 사용자 입력 |
 | G7 | 설계·셀 확정 0건 (후보 306, provisional 셀 1,537) | `design_candidates.csv` → `design_map.csv`, `dx_files.csv`의 `physical_cell_id` 입력 | 사용자 입력 |
 | G8 | Parquet 비교 작업실은 여전히 4개 프로파일 지표 사용 | 작업실 지표를 `run_metrics`로 교체 또는 작업실을 거미줄 쌍 비교로 대체할지 결정 | 다음 |
-| G9 | 파생 사이클 기반 지표의 검증 (라벨 있는 파일 대비 유지율·CE 비교) 미수행 | 라벨 있는 데이터셋으로 run 지표 교차 검증 리포트 | 다음 |
+| G9 | 파생 사이클 기반 지표의 검증 미수행 | `metric_validation`: 라벨 있는 652 데이터셋에서 기록 사이클 vs 파생 사이클 지표 비교 (`db/metric_validation.*`, `db-build` 단계). 82.7% 완전 일치, 초기 용량 2% 이내 92.6%, 유지율@100 2% 이내 93.8%, CE 2% 이내 90.4%. 불일치 113건은 전부 펄스 프로토콜의 사이클 계수 차이(PNE TotalCycle = 스케줄 루프) | 완료 |
 | G10 | 저항·휴지(rest) 지표 없음 | 펄스 구간 ΔV/ΔI(유도 전류 한계 검토 후) | 다음 (P6) |
 
 ## 7. 진행 기록
 
 - 2026-10-24: 3.4.0 정리(원시 DB·카탈로그 생성기 제거, 스탬프 검증, 파생 step/cycle). 본 로드맵 수립.
-- 2026-10-24: P1~P5 구현 (3.5.0). `cyc2parquet` 분리, `run_metrics`/`research_db`/`design_network`/`db_build`, 데스크톱·CLI 연결. 구현 점검 G1~G5 반영.
+- 2026-10-24: P1~P5 구현 (3.5.0). `cyc2parquet` 분리, `run_metrics`/`research_db`/`design_network`/`db_build`/`metric_validation`, 데스크톱·CLI 연결. 구현 점검 G1~G5, G9 반영.

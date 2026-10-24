@@ -1,6 +1,6 @@
 """One-command, incremental build of the design comparison database.
 
-derived steps → derived cycles → run metrics → research DB → design network.
+derived steps ??derived cycles ??run metrics ??research DB ??design network.
 Each stage is skipped when its input fingerprint (file size/mtime of inputs and
 the stage's own source code) matches the previous successful build, so a
 no-change rebuild touches only a handful of files on the NAS.
@@ -54,17 +54,17 @@ def build_database(project, *, workers=8, network=True, force=False, progress=pr
         if state.get(name) == key and all(Path(p).exists() for p in outputs):
             stages[name] = {"seconds": round(time.perf_counter() - begin, 1), "result": "unchanged"}
             if progress:
-                progress(f"[{name}] 변경 없음")
+                progress(f"[{name}] 蹂寃??놁쓬")
             return
         if progress:
-            progress(f"[{name}] 시작")
+            progress(f"[{name}] ?쒖옉")
         value = function()
         # Fingerprint after the run so the stage's own outputs (e.g. sidecar dirs) are captured.
         state[name] = _fingerprint(inputs, modules)
         state_path.write_text(json.dumps(state, indent=1), encoding="utf-8")
         stages[name] = {"seconds": round(time.perf_counter() - begin, 1), "result": _brief(value)}
         if progress:
-            progress(f"[{name}] 완료 {stages[name]['seconds']} s")
+            progress(f"[{name}] ?꾨즺 {stages[name]['seconds']} s")
 
     steps_dir, cycles_dir = derived / "steps", derived / "cycles"
     summary = derived_cycles.cycles_summary_path(project)
@@ -75,6 +75,9 @@ def build_database(project, *, workers=8, network=True, force=False, progress=pr
           [library_db, steps_dir, cycles_dir, summary], [summary], [derived_steps, derived_cycles])
     stage("run_metrics", lambda: run_metrics.build_run_metrics(project, workers=workers),
           [library_db, summary, cycles_dir, dx / "dx_files.csv"], run_outputs, [run_metrics])
+    from . import metric_validation
+    stage("validation", lambda: _validation_brief(metric_validation.validate_metrics(project, workers=workers)),
+          [library_db, steps_dir], [db / "metric_validation.json"], [metric_validation, derived_cycles])
     stage("research_db", lambda: research_db.build_research_db(project),
           [dx / "dx_files.csv", dx / "dx_tests.csv", db / "design_map.csv", *run_outputs[:2]],
           [db / "research.sqlite3"], [research_db, run_metrics])
@@ -83,6 +86,12 @@ def build_database(project, *, workers=8, network=True, force=False, progress=pr
         stage("network", lambda: str(design_network.build_network(project)),
               [db / "research.sqlite3"], [db / "network.html"], [design_network])
     return {"project": str(project), "seconds": round(time.perf_counter() - started, 1), "stages": stages}
+
+
+def _validation_brief(summary):
+    if not isinstance(summary, dict):
+        return summary
+    return {key: value for key, value in summary.items() if key not in {"worst_datasets"}}
 
 
 def _brief(value):
