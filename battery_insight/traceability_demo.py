@@ -8,7 +8,7 @@ def create_demo(destination, *, reviewed=True):
     from pptx.util import Inches
     from . import library
     from . import traceability as trace
-    from .native_cyc.selftest import fixture_4101
+    from cyc2parquet.selftest import fixture_4101
     from .slide_candidates import extract_proposals, review_proposal
     root = Path(destination).resolve()
     if root.exists() and any(root.iterdir()):

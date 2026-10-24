@@ -6,7 +6,7 @@ from tkinter import ttk
 from battery_insight.desktop import BatteryInsightApp
 from battery_insight.folder_queue import run_folders
 from battery_insight.library import library_rows
-from battery_insight.native_cyc.selftest import fixture_folder
+from cyc2parquet.selftest import fixture_folder
 
 
 def test_folder_failure_continues_to_later_folders_in_order(tmp_path):

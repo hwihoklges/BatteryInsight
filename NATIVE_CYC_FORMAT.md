@@ -1,5 +1,9 @@
 # Native CYC layouts verified for BatteryInsight 3.1
 
+> **분리 안내:** 이 문서가 설명하는 변환기는 독립 패키지 **`cyc2parquet`** 로 분리되었습니다
+> (`d:\Automatic_ppt\cyc2parquet`). 최신 구현/CLI/테스트는 그 패키지의
+> `docs/NATIVE_CYC_FORMAT.md`를 참고하세요. 이 사본은 과거 참조용입니다.
+
 The file header has a 332-byte prefix containing a column count and a version-dependent reserved WORD column table. The count describes float values in each record, not the capacity of the reserved table.
 
 | Header magic | Reserved column slots | Actual record start | Record size |

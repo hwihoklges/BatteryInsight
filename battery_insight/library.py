@@ -554,7 +554,7 @@ def unlink_record(project, dataset_id, *, reviewer="local_user", reason="연결 
 
 
 def convert_and_register(project, source, *, progress=None):
-    from .native_cyc.service import convert_folder
+    from cyc2parquet.service import convert_folder
     project, source = Path(project).resolve(), Path(source).resolve()
     target = project / "converted" / (source.name + "_" + identity(str(source))[:10])
     converted = convert_folder(source, target, progress=progress)

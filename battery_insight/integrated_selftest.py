@@ -8,7 +8,7 @@ import sys
 
 def run_self_test():
     from . import library
-    from .native_cyc.selftest import fixture_folder
+    from cyc2parquet.selftest import fixture_folder
     from .library_workbench import workbench_config
     from .workbench_server import Workbench, make_server
     from .knowledge_registry import KnowledgeRegistry
@@ -71,7 +71,7 @@ def run_self_test():
         moved = base / "copied-project"
         shutil.copytree(project, moved)
         checks["project_local_data_portable"] = all(Path(row["path"]).is_relative_to(moved) and Path(row["path"]).is_file() for row in library.library_rows(moved))
-        from .native_cyc.selftest import run_self_test as native_self_test
+        from cyc2parquet.selftest import run_self_test as native_self_test
         checks["4100_and_4101_native_contracts"] = native_self_test()["status"] == "success"
         from .traceability_demo import create_demo
         from .traceability import snapshot as trace_snapshot

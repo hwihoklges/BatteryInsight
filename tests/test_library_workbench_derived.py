@@ -14,7 +14,7 @@ import pytest
 
 from battery_insight import library
 from battery_insight.library_workbench import build_library_bundle, profile_metrics, workbench_config
-from battery_insight.native_cyc.selftest import fixture_folder
+from cyc2parquet.selftest import fixture_folder
 
 
 @pytest.fixture

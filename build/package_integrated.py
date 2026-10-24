@@ -7,9 +7,12 @@ import uuid
 import xml.etree.ElementTree as ET
 import zipfile
 
+import cyc2parquet
+
 PROJECT = Path(__file__).resolve().parents[1]
 ROOT = PROJECT.parents[1]
 OUT = PROJECT.parent
+CYC2PARQUET_DIR = Path(cyc2parquet.__file__).resolve().parent
 
 
 def sha(path):
@@ -44,11 +47,13 @@ def main():
     entries = {name.replace("\\", "/"): name for name in archive.toc}
     checked = {}
     paths = list((PROJECT / "battery_insight").glob("*.py"))
-    paths += list((PROJECT / "battery_insight/native_cyc").glob("*.py"))
     paths += [path for directory in ("assets", "resources") for path in (PROJECT / "battery_insight" / directory).rglob("*") if path.is_file()]
     paths += [PROJECT / "THIRD_PARTY_NOTICES.txt"]
     for path in paths:
         name = path.relative_to(PROJECT).as_posix()
+        checked[name] = hashlib.sha256(archive.extract(entries[name])).hexdigest() == sha(path)
+    for path in CYC2PARQUET_DIR.glob("*.py"):
+        name = "cyc2parquet/" + path.name
         checked[name] = hashlib.sha256(archive.extract(entries[name])).hexdigest() == sha(path)
     if not all(checked.values()):
         raise SystemExit("Embedded code/assets/notices differ from released source.")
@@ -58,7 +63,7 @@ def main():
     compatibility = json.loads((ROOT / "work/traceability_321_compatibility.json").read_text(encoding="utf-8"))
     if not compatibility["all_existing_edges_readable"] or not compatibility["raw_links_valid"]:
         raise SystemExit("Existing reviewed project links must remain readable.")
-    validation = {"application": "BatteryInsight", "version": "3.4.0", "exe_sha256": sha(exe), "exe_bytes": exe.stat().st_size,
+    validation = {"application": "BatteryInsight", "version": "3.5.0", "exe_sha256": sha(exe), "exe_bytes": exe.stat().st_size,
         "tests": suites, "frozen_execution": {"status": frozen["status"], "scope": frozen["scope"], "summary": frozen["summary"],
             "selftest_checks": frozen["selftest_checks"], "gui_checks": frozen["gui_checks"], "checks": frozen["checks"]},
         "existing_comparison_browser": browser, "traceability_browser": trace_browser, "existing_project_compatibility": compatibility,
@@ -87,7 +92,7 @@ def main():
     native_code = hashlib.sha256()
     for name in ("reader.py", "service.py"):
         native_code.update(name.encode())
-        native_code.update((PROJECT / "battery_insight/native_cyc" / name).read_bytes())
+        native_code.update((CYC2PARQUET_DIR / name).read_bytes())
     binding = {"cyc_sha256": patch_qa["input_sha256"], "cts_sha256": None, "code_sha256": native_code.hexdigest(), "storage": baseline_manifest["storage"]}
     if hashlib.sha256(json.dumps(binding, sort_keys=True).encode()).hexdigest() != baseline["fingerprint"]:
         raise SystemExit("Native code changed; actual CYC baseline must be repeated.")

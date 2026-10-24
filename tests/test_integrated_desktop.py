@@ -10,7 +10,7 @@ import pytest
 from battery_insight.desktop import BatteryInsightApp
 from battery_insight.library import convert_and_register, library_rows, assign_metadata
 from battery_insight.library_workbench import workbench_config
-from battery_insight.native_cyc.selftest import fixture_folder
+from cyc2parquet.selftest import fixture_folder
 from battery_insight.workbench_server import Workbench
 
 
