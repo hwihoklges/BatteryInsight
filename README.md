@@ -1,8 +1,24 @@
 # Battery Insight — 전기화학 데이터 정리·분석 코드
 
+## 3.5.0: 설계 비교 DB와 설계 거미줄
+
+서로 다른 설계의 전기화학 지표를 같은 시험 조건(코호트)끼리 비교하는 연구 DB와 오프라인 설계 네트워크를 만듭니다. 한 명령으로 파생 step/cycle → run 지표 → `db/research.sqlite3` → `db/network.html`을 순서대로 갱신하며, 입력이 바뀌지 않은 단계는 건너뜁니다(`db/build_state.json`). 계획과 진행 상황은 [ROADMAP.md](ROADMAP.md)에 있습니다.
+
+```powershell
+python -m battery_insight db-build --project D:/BIProject          # 변경된 단계만 갱신 (--force 전체 재계산)
+python -m battery_insight network --project D:/BIProject           # db/network.html 생성 후 열기 (--build-only)
+```
+
+- 산출물 (`<project>/db/`): `run_profile.parquet`·`run_metrics.parquet`·`run_cycles.parquet`(run=시험×채널 지표), `research.sqlite3`·`research.xlsx`(설계·셀·시험·run·관측·셀/설계 요약·코호트), `identity_gaps.csv`(식별 공백), `design_candidates.csv`(설계 후보 목록), `network.json`·`network.html`.
+- 설계 확정: `design_candidates.csv`의 행을 `design_map.csv`에 복사하고 `design_id`/`design_label`을 채우면 다음 빌드부터 확정 설계로 묶입니다(`match_type`: test_key > series_key > candidate > tags). `design_map.csv`는 빌드가 덮어쓰지 않습니다.
+- 셀 확정: `dx/dx_files.csv`의 `physical_cell_id`를 채우면 같은 셀의 반복 run이 한 표본(중앙값)으로 묶입니다. 비어 있으면 run 단위 *provisional* 셀입니다.
+- 이상 시험(`dx_tests.csv`의 `anomaly`: 채널 이상 등)은 관측값은 보존하되 셀·설계 요약에서 제외합니다.
+- 데스크톱 **지표·관계망·분석** 탭: *설계 비교 DB 갱신*, *설계 관계망 열기*, *설계 확정표 열기*.
+- CYC → Parquet 변환기는 별도 패키지 [`cyc2parquet`](../cyc2parquet)로 분리했습니다(`pip install -e ../cyc2parquet`). BatteryInsight는 이를 의존성으로 사용합니다.
+
 ## 3.4.0: 패키지 정리·효율화와 파생 step/cycle
 
-원본 검증은 크기·수정시각 스탬프로 빠르게 확인하고(변경 의심 시에만 SHA-256), 사이클 라벨이 없는 파일은 파생 사이클 열로 비교합니다. 파생값은 원본을 바꾸지 않고 `<project>/derived/` 사이드카에 저장합니다. 별도 raw DB·지표 사전 생성기 등 사용하지 않는 기능을 제거했습니다. 자세한 내용은 [ROADMAP.md](ROADMAP.md)의 3.4.0 항목을 참조하세요.
+원본 검증은 크기·수정시각 스탬프로 빠르게 확인하고(변경 의심 시에만 SHA-256), 사이클 라벨이 없는 파일은 파생 사이클 열로 비교합니다. 파생값은 원본을 바꾸지 않고 `<project>/derived/` 사이드카에 저장합니다. 별도 raw DB·지표 사전 생성기 등 사용하지 않는 기능을 제거했습니다. 자세한 내용은 [이전 로드맵](docs/archive/ROADMAP_2026-10-22.md)을 참조하세요.
 
 ```powershell
 python -m battery_insight.derived_steps --project D:/BIProject
@@ -45,7 +61,7 @@ python -m battery_insight self-test
 
 raw → 단위/부호 표준화 → Parquet 저장 → 전기화학 feature → 이상 지표·근거·원인 후보를 연결하는 로컬 Python 패키지다. 기존 `data_analysis`, `data_analysis_projects`, `pne_studio2` 및 Studio가 연결하는 `cyclediag`의 소스·export 계약을 확인하여 만들었다.
 
-**코드와 로드맵에 더해, 사용자가 제공한 PNE RPT ZIP 4개·Cycle 폴더 1개의 36개 채널을 실제 변환하는 데이터베이스를 구현했다.** 실제 변환 결과는 소스 패키지 밖의 `../raw_database/`에 저장한다. 합성 회귀 검사와 실제 입력 검증을 구분해 기록하며, 머신러닝은 사용하지 않는다. 상세 계획은 [ROADMAP.md](ROADMAP.md), 검증 결과는 `validation_summary.json`을 참조한다.
+**코드와 로드맵에 더해, 사용자가 제공한 PNE RPT ZIP 4개·Cycle 폴더 1개의 36개 채널을 실제 변환하는 데이터베이스를 구현했다.** 실제 변환 결과는 소스 패키지 밖의 `../raw_database/`에 저장한다. 합성 회귀 검사와 실제 입력 검증을 구분해 기록하며, 머신러닝은 사용하지 않는다. 상세 계획은 [이전 로드맵](docs/archive/ROADMAP_2026-10-22.md), 검증 결과는 `validation_summary.json`을 참조한다.
 
 2026-10-22 코드 효율 점검에서 중복 Parquet 읽기·동일 구간 분석·꺼진 상관 계산을 줄이고, 변경 없는 화면 확인에 ETag/304를 적용했다. 실제 36채널 새로고침은 3회 중앙값 **9.24 → 6.93초**였으며 전체 분석과 원곡선 응답이 전후 동일하다. 측정 조건, 반영 코드와 다음 개선 순서는 [성능 점검 보고서](performance_report.html), 재현 수치는 [performance_verification.json](performance_verification.json)에 있다. 대규모 비교의 전체 쌍 생성과 watch의 주기적 전체 재계산은 후속 개선 대상이다.
 
@@ -121,7 +137,7 @@ watch 실행 중 새 raw·등록표를 확인하고 `http://127.0.0.1:8765/`에�
 
 AIM 관련 지표를 포함한 **기존 전기화학 feature를 정의·단위·출처별로 정리한 사전**을 `battery_insight/resources/catalog/`에 동봉한다. 데스크톱의 지표 목록 버튼이 `metrics_catalog.html`을 연다.
 
-`metrics_catalog.html`은 **중복 정리 후 대표 지표 223개**를 검색하는 기본 목록이며, `metrics_catalog.csv`는 같은 목록의 Excel용 표다. 전체 589개 중 108개를 중복 표현·계열 대표 선택·구현 대체로 제외했다. 품질·조건·진단 등 보조 150개와 정의/출력 확인이 필요한 108개는 따로 보존한다. 전체 사전은 `all_metrics/`, 제외 항목과 대표·근거는 `removed_duplicates.csv`, 전체 판정은 `pruning_decisions.csv`에 있다. 자세한 선정 기준은 [PRUNING.md](PRUNING.md)를 참조한다. 사전을 만들던 `catalog`/`prune` 명령은 3.4.0에서 제거했으며(소스 저장소 접근이 필요한 일회성 생성기), 동봉된 결과물은 그대로 유지한다.
+`metrics_catalog.html`은 **중복 정리 후 대표 지표 223개**를 검색하는 기본 목록이며, `metrics_catalog.csv`는 같은 목록의 Excel용 표다. 전체 589개 중 108개를 중복 표현·계열 대표 선택·구현 대체로 제외했다. 품질·조건·진단 등 보조 150개와 정의/출력 확인이 필요한 108개는 따로 보존한다. 전체 사전은 `all_metrics/`, 제외 항목과 대표·근거는 `removed_duplicates.csv`, 전체 판정은 `pruning_decisions.csv`에 있다. 자세한 선정 기준은 [PRUNING.md](docs/archive/PRUNING.md)를 참조한다. 사전을 만들던 `catalog`/`prune` 명령은 3.4.0에서 제거했으며(소스 저장소 접근이 필요한 일회성 생성기), 동봉된 결과물은 그대로 유지한다.
 
 별도 AIM 명세는 아직 확인되지 않아 AIM에 속한 모든 지표라고 단정하지 않는다. 같은 이름의 다른 정의, alias의 수치 변환, 확인되지 않은 단위를 드러내는 구조다. 아래 raw 파이프라인은 최초 요청에 맞춰 함께 구현한 선택 기능이며 목록 작성에 필수는 아니다.
 

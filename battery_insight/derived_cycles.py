@@ -51,6 +51,14 @@ SUMMARY_COLUMNS = ["cycle_derived", "start_step", "n_steps", "start_elapsed_s",
                    "charge_capacity_ah", "discharge_capacity_ah", "coulombic_efficiency",
                    "charge_duration_s", "discharge_duration_s", "mean_discharge_voltage_v",
                    "max_voltage_v", "min_voltage_v", "has_pulses"]
+VOLTAGE_FACTORS = {"V": 1., "mV": 1e-3}
+CAPACITY_FACTORS = {"Ah": 1., "mAh": 1e-3, "uAh": 1e-6}
+
+
+def unit_factors(row):
+    """(voltage, capacity) factors to V/Ah from confirmed library metadata, else (None, None)."""
+    metadata = (row.get("metadata") or {}) if row.get("metadata_current", True) else {}
+    return VOLTAGE_FACTORS.get(metadata.get("voltage_unit")), CAPACITY_FACTORS.get(metadata.get("capacity_unit"))
 
 
 # --------------------------------------------------------------------------- #
@@ -227,12 +235,11 @@ def is_current(out, sha256):
             and meta.get(b"step_method", b"").decode() == derived_steps.STEP_METHOD)
 
 
-def _build_one(step_path, out, dataset_id, sha256, write):
+def _build_one(step_path, out, dataset_id, sha256, write, factors=(1e-3, 1e-6)):
     """Compute cycles for one file; write the per-file sidecar when ``write``.
 
-    Always returns the per-cycle ``summary`` (with a ``dataset_id`` column) so a
-    single combined ``cycles_summary.parquet`` can be assembled by the caller,
-    even for files whose sidecar is already current.
+    Returns the per-cycle ``summary`` (with a ``dataset_id`` column) for the
+    combined ``cycles_summary.parquet``; ``None`` when units are unconfirmed.
     """
     import pyarrow as pa
     import pyarrow.parquet as pq
@@ -241,8 +248,10 @@ def _build_one(step_path, out, dataset_id, sha256, write):
         return {"dataset_id": dataset_id, "status": "step_sidecar_stale", "summary": None}
     steps = pd.read_parquet(step_path)
     enriched = assign_cycles(steps)
-    summary = cycle_summary(enriched)
-    summary.insert(0, "dataset_id", dataset_id)
+    summary = None
+    if None not in factors:
+        summary = cycle_summary(enriched, *factors)
+        summary.insert(0, "dataset_id", dataset_id)
 
     status = "current"
     if write:
@@ -256,49 +265,89 @@ def _build_one(step_path, out, dataset_id, sha256, write):
         pq.write_table(arrow, tmp, compression="zstd")
         tmp.replace(out)
         status = "built"
-    return {"dataset_id": dataset_id, "status": status,
-            "steps": len(enriched), "cycles": len(summary), "summary": summary}
+    return {"dataset_id": dataset_id, "status": status if summary is not None else status + "_units_unconfirmed",
+            "steps": len(enriched), "cycles": len(summary) if summary is not None else 0, "summary": summary}
+
+
+def _existing_summary(project):
+    """Reusable rows of the combined summary keyed by dataset_id, with their identity keys."""
+    import pyarrow.parquet as pq
+    path = cycles_summary_path(project)
+    if not path.exists():
+        return {}, {}
+    try:
+        table = pq.read_table(path)
+        meta = table.schema.metadata or {}
+        if (meta.get(b"cycle_method", b"").decode() != CYCLE_METHOD
+                or meta.get(b"step_method", b"").decode() != derived_steps.STEP_METHOD):
+            return {}, {}
+        keys = json.loads(meta.get(b"dataset_keys", b"{}").decode())
+        frame = table.to_pandas()
+    except Exception:
+        return {}, {}
+    return {k: g for k, g in frame.groupby("dataset_id", sort=False)}, keys
 
 
 def build_cycle_tables(project, *, workers=4, limit=None, progress=print):
+    """Build per-file cycle sidecars and the combined summary incrementally.
+
+    Summary rows are reused when the file's sha256 and unit factors match the
+    previous build, so a no-change rebuild reads no step sidecars.
+    """
     from .library import library_rows
     project = Path(project).resolve()
     rows = [r for r in library_rows(project) if r.get("format") == "native_cyc"]
     if limit:
         rows = rows[:limit]
-    jobs, results = [], []
+    previous, previous_keys = _existing_summary(project)
+    jobs, results, summaries, keys = [], [], [], {}
     for row in rows:
-        out = cycles_sidecar_path(project, row["dataset_id"])
-        step_path = derived_steps.sidecar_path(project, row["dataset_id"])
+        dataset_id = row["dataset_id"]
+        out = cycles_sidecar_path(project, dataset_id)
+        step_path = derived_steps.sidecar_path(project, dataset_id)
+        factors = unit_factors(row)
+        key = f"{row['sha256']}|{factors[0]}|{factors[1]}"
         if not step_path.exists():
-            results.append({"dataset_id": row["dataset_id"], "status": "no_step_sidecar"})
+            results.append({"dataset_id": dataset_id, "status": "no_step_sidecar"})
             continue
         write = not is_current(out, row["sha256"])
-        jobs.append((step_path, out, row["dataset_id"], row["sha256"], write))
+        if not write and previous_keys.get(dataset_id) == key and dataset_id in previous:
+            summaries.append(previous[dataset_id])
+            keys[dataset_id] = key
+            results.append({"dataset_id": dataset_id, "status": "reused", "cycles": len(previous[dataset_id])})
+            continue
+        if not write and None in factors and previous_keys.get(dataset_id) == key:
+            results.append({"dataset_id": dataset_id, "status": "current_units_unconfirmed"})
+            keys[dataset_id] = key
+            continue
+        jobs.append((step_path, out, dataset_id, row["sha256"], write, factors))
+        keys[dataset_id] = key
 
-    summaries = []
-    with ProcessPoolExecutor(max_workers=workers) as pool:
-        futures = {pool.submit(_build_one, *job): job for job in jobs}
-        for i, future in enumerate(as_completed(futures), 1):
-            try:
-                res = future.result()
-                summary = res.pop("summary", None)
-                if summary is not None and len(summary):
-                    summaries.append(summary)
-                results.append(res)
-            except Exception as error:
-                results.append({"dataset_id": futures[future][2], "status": "failed", "error": str(error)})
-            if progress and (i % 100 == 0 or i == len(jobs)):
-                progress(f"cycles {i}/{len(jobs)}")
+    if jobs:
+        with ProcessPoolExecutor(max_workers=workers) as pool:
+            futures = {pool.submit(_build_one, *job): job for job in jobs}
+            for i, future in enumerate(as_completed(futures), 1):
+                try:
+                    res = future.result()
+                    summary = res.pop("summary", None)
+                    if summary is not None and len(summary):
+                        summaries.append(summary)
+                    results.append(res)
+                except Exception as error:
+                    keys.pop(futures[future][2], None)
+                    results.append({"dataset_id": futures[future][2], "status": "failed", "error": str(error)})
+                if progress and (i % 100 == 0 or i == len(jobs)):
+                    progress(f"cycles {i}/{len(jobs)}")
 
     (project / "derived").mkdir(parents=True, exist_ok=True)
-    if summaries:
+    if jobs or set(keys) != set(previous_keys):
         import pyarrow as pa
         import pyarrow.parquet as pq
-        combined = pd.concat(summaries, ignore_index=True)
+        combined = pd.concat(summaries, ignore_index=True) if summaries else pd.DataFrame(columns=["dataset_id"] + SUMMARY_COLUMNS)
         arrow = pa.Table.from_pandas(combined, preserve_index=False)
         arrow = arrow.replace_schema_metadata(
-            {"step_method": derived_steps.STEP_METHOD, "cycle_method": CYCLE_METHOD})
+            {"step_method": derived_steps.STEP_METHOD, "cycle_method": CYCLE_METHOD,
+             "dataset_keys": json.dumps(keys, sort_keys=True)})
         target = cycles_summary_path(project)
         tmp = target.with_suffix(".tmp")
         pq.write_table(arrow, tmp, compression="zstd")

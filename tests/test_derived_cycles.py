@@ -146,3 +146,30 @@ def test_empty_steps():
     assert "cycle_derived" in out.columns
     summary = dc.cycle_summary(out)
     assert len(summary) == 0
+
+
+def test_build_cycle_tables_reuses_summary_and_respects_units(tmp_path, monkeypatch):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    from battery_insight import library
+    st, v, q = _cc_cycle_records(2)
+    steps = ds.step_table(st, v, q)
+    rows = []
+    for name, units in (("a", {"voltage_unit": "mV", "capacity_unit": "uAh"}), ("b", {})):
+        path = ds.sidecar_path(tmp_path, name)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        table = pa.Table.from_pandas(steps, preserve_index=False).replace_schema_metadata(
+            {"method": ds.STEP_METHOD, "source_sha256": "sha-" + name, "dataset_id": name})
+        pq.write_table(table, path)
+        rows.append({"dataset_id": name, "sha256": "sha-" + name, "format": "native_cyc",
+                     "metadata": units, "metadata_current": True})
+    monkeypatch.setattr(library, "library_rows", lambda project: rows)
+    first = dc.build_cycle_tables(tmp_path, workers=1, progress=None)
+    summary = pd.read_parquet(dc.cycles_summary_path(tmp_path))
+    assert set(summary.dataset_id) == {"a"}
+    assert summary.discharge_capacity_ah.max() == pytest.approx(0.07)
+    assert set(first.status) == {"built", "built_units_unconfirmed"}
+    monkeypatch.setattr(dc, "_build_one", lambda *a: pytest.fail("no-change rebuild must not recompute"))
+    second = dc.build_cycle_tables(tmp_path, workers=1, progress=None)
+    assert set(second.status) == {"reused", "current_units_unconfirmed"}
+    pd.testing.assert_frame_equal(pd.read_parquet(dc.cycles_summary_path(tmp_path)), summary)

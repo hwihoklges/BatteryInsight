@@ -1,0 +1,107 @@
+# BatteryInsight 로드맵 (원점 재검토, 2026-10-24)
+
+이전 로드맵(2026-10-22)은 [docs/archive/ROADMAP_2026-10-22.md](docs/archive/ROADMAP_2026-10-22.md)에 보존했다.
+
+## 1. 목표 재정의
+
+> **서로 다른 설계의 전기화학 지표와 데이터를 설계 간에 비교하는 "거미줄(네트워크)"을 만들고, 그 결과를 질의 가능한 데이터베이스로 축적한다.**
+
+- 변환(raw → Parquet)은 별도 패키지 **`cyc2parquet`** 로 분리한다. BatteryInsight는 변환 결과 Parquet만 입력으로 받는다.
+- 비교의 단위는 **설계(design)** 다. 설계 ← 물리 셀 ← 시험 ← 데이터셋(Parquet 조각) 계층을 DB에 명시한다.
+- 지표는 매번 다시 계산하는 화면용 값이 아니라 **영구 테이블**(사이클 지표 → 셀 요약 → 설계 요약)로 저장한다.
+- 원칙(유지): 원본 불변, 머신러닝 없음, 추정값은 `candidate`/`inferred`로 표시하고 사람이 확정, 단위 미확정이면 계산하지 않음, 같은 물리 셀 반복은 1표본.
+
+## 2. 현재 상태 진단 (2026-10-24)
+
+| 영역 | 상태 | 판단 |
+|---|---|---|
+| CYC → Parquet 변환 (`cyc2parquet` 패키지로 분리 완료) | 4100/4101 검증, 2,932 파일 변환 완료 | 완료. 독립 패키지(자체 CLI·테스트·pyproject), BatteryInsight는 `pip` 의존성으로 사용 |
+| Parquet 라이브러리 (`library.py`) | 데이터셋·메타데이터·규칙·문서 연결, 스탬프 검증 | 유지 (DB의 데이터셋 계층) |
+| DX 분류 (`projects/*/dx`) | 513 시험, 시험종류 추정 88.8% | 유지. 설계 후보(태그) 공급원 |
+| 파생 step/cycle | step 99.96%, cycle F1 0.949 | 유지. 지표 계산의 입력 |
+| 지표 (`run_metrics`) | run(시험×채널) 단위 9종: 초기 용량, N 사이클 용량·유지율, 80% 도달(censored), 퇴화 기울기, CE 중앙값, 방전 평균전압·저하. 1,537 run (ok 711 / partial 134 / insufficient 692) | 완료 (P2). 저항·휴지 지표는 미포함 |
+| 설계 DB (`research_db`) | `db/research.sqlite3`: 설계 후보 306, provisional 셀 1,537, 코호트 59 (설계 2개 이상 37) | 완료 (P3). 설계·셀 확정은 사용자 입력 대기 |
+| 거미줄 비교 (`design_network`) | 설계 노드, 태그 Jaccard·코호트 내 강건 z RMS 간선, 레이더, 불일치 표, 쌍 비교 (`db/network.html`) | 완료 (P4) |
+| 구 raw-CSV 파이프라인 (`pipeline/ingest/adapters/features/diagnostics/experiment_updates`, `cli run/update/watch`) | 동작, 테스트 다수 | **동결**(신규 투자 없음), 차기 분리 후보 |
+| 장표·추적·Copilot (`knowledge_*`, `traceability*`, `copilot_*`) | 동작 | 유지. 설계 메타데이터의 근거 공급원 |
+
+## 3. 목표 아키텍처
+
+```
+cyc2parquet (별도 패키지)          BatteryInsight
+CYC/CTS ──► Parquet(+meta) ──► ① library   데이터셋·단위·확정 메타데이터
+                                 ② derived   step / cycle 사이드카
+                                 ③ metrics   run 지표 (사이클 표·프로파일·관측값) (db/run_*.parquet)
+                                 ④ research  설계·셀·시험·데이터셋 + 지표 요약 (db/research.sqlite3)
+                                 ⑤ network   설계 거미줄·레이더·상이점        (db/network.json, network.html)
+                                 ⑥ UI        데스크톱 / 작업실 / Excel 내보내기
+```
+
+### 데이터 계약 (패키지 간)
+
+- Parquet 열: `source_row, step_time_s, voltage_native, capacity_native, cycle?, step?, total_time_s?`; 스키마 메타데이터 `format_id, source_sha256, converter`.
+- 전류 열은 없다. 전류는 step의 `Δcapacity/Δt`로 **유도**하며 결과에 `derived` 표시.
+- 단위는 library 메타데이터(`voltage_unit`, `capacity_unit`)가 확정해야 지표를 계산한다.
+
+### research DB 스키마 (SQLite, `db/research.sqlite3`)
+
+| 테이블 | 키 | 내용 |
+|---|---|---|
+| `designs` | design_id | 라벨, 상태(candidate/confirmed), 태그·설계 필드, 충돌, 근거 |
+| `cells` | cell_id | 상태(confirmed=`physical_cell_id` / provisional=run), design_id |
+| `tests` | test_key | 시험종류(+출처: 확정/이름/추정), 시작일, 온도, 압력, 프로토콜, RPT 시점, 태그 |
+| `runs` / `run_datasets` | run_id (= test_key:채널) | 셀·설계·코호트 / 조각 순서·sha256 |
+| `run_profile` | run_id | 공칭 용량, C-rate 등급, 전압창, 품질·사유 |
+| `observations` | run_id, metric_id, window | 값, 단위, censored, 품질, 방법 버전 |
+| `cell_metrics` | cell_id, cohort_key, metric_id, window | run 중앙값 |
+| `design_metrics` | design_id, cohort_key, metric_id, window | 셀 수, 평균, 표준편차, 중앙값, 최소, 최대 (셀 동일 비중) |
+| `cohorts`, `metric_defs`, `build_log` | | 코호트 정의·지표 정의·빌드 이력 |
+
+## 4. 단계별 계획
+
+검토(2026-10-24) 반영 사항:
+- **식별 우선:** 지표보다 설계·셀·시험 식별을 먼저 확정 가능한 형태로 만든다. 확인된 `physical_cell_id`가 없으면 셀은 *provisional*(run = 시험×채널)로 두고 표본 수에 그 상태를 표시한다.
+- **연결표:** 셀↔run↔데이터셋(조각)은 1:N 연결표로 저장하고 조각 순서를 기록한다.
+- **설계 후보:** DX 태그(소재·공정·형상·공급사)를 정규화한 후보 ID를 제안하되 원문과 충돌(예: dry와 wet 동시)을 보존한다. 사용자가 `db/design_map.csv`로 확정하며 재빌드가 덮어쓰지 않는다.
+- **코호트 키:** 지표는 `시험종류|온도|C-rate 등급|전압창` 코호트와 관측 창(N 사이클)을 키로 저장한다. 같은 코호트 안에서만 전기화학 유사도를 계산한다.
+- **유도 전류 제한:** Δ용량/Δt는 구간 평균 전류다. C-rate 등급 분류에만 쓰고 저항 지표는 MVP에서 제외한다.
+- **품질 게이트:** 완전 충·방전 쌍이 없으면 CE는 NULL, 사이클이 모자라면 유지율·기울기 NULL, 80% 미도달은 *censored*로 표시한다.
+- **변환기 분리(P1)** 는 사용자 요청이므로 수행하되 다른 단계와 독립적으로 병렬 진행한다.
+
+| 단계 | 내용 | 완료 기준 |
+|---|---|---|
+| **P1 변환기 분리** (완료) | `native_cyc` → 독립 패키지 `cyc2parquet`(자체 CLI·테스트·pyproject). BatteryInsight는 의존성으로 사용 | 두 패키지 테스트 통과, 데스크톱 변환 동작, 배포 빌드 스크립트 반영 |
+| **P2 run 지표** (`run_metrics`) (완료) | run(시험×채널) 단위로 조각을 이어 붙인 사이클 표, 공칭 용량·C-rate 등급·전압창(프로토콜 서명), 초기 용량·N 사이클 용량/유지율·80% 도달·퇴화 기울기·CE 중앙값·방전 평균전압 저하 | 실데이터 전체 계산, 품질 상태·사유 기록 |
+| **P3 연구 DB** (`research_db`) (완료) | 설계·셀·시험·run·데이터셋 계층, 관측값, 셀 중앙값 → 설계 통계(셀 동일 비중), 코호트, 식별 공백 보고서, Excel | `db/research.sqlite3`, `research.xlsx`, `identity_gaps.csv`; 사용자 매핑 보존 |
+| **P4 설계 거미줄** (`design_network`) (완료) | 설계 노드, 설계 유사도(태그 키별 Jaccard)·전기화학 유사도(코호트 내 강건 표준화 RMS) 간선, 레이더, 상이점 표, 쌍 비교 | 오프라인 단일 `db/network.html` + JSON |
+| **P5 통합** (완료) | `db-build`, `network` 명령, 데스크톱 버튼, 문서 | 한 명령으로 사이드카 → 지표 → DB → 거미줄 |
+| **P6 정리** | 구 raw-CSV 파이프라인 분리 여부 결정, 저항·휴지 지표(검증 후) 추가 | 사용 여부 확인 후 |
+
+## 5. 의도적으로 하지 않는 것
+
+- 지표·설계 의미의 자동 확정, 파일명만으로 설계 확정
+- 머신러닝 모델 학습·예측
+- 원본 CYC/Parquet 수정
+- 단위가 확인되지 않은 값의 물리 지표화
+
+## 6. 구현 점검 (2026-10-24, 1차 구현 후)
+
+로드맵 대비 구현을 실데이터(PNE_initial, 2,932 파일)로 점검한 결과와 조치.
+
+| # | 발견 | 조치 | 상태 |
+|---|---|---|---|
+| G1 | `cycles_summary`가 일부(50개) 데이터셋만 담긴 채 남아 있었고, 사이클 단계가 매번 전체 요약을 다시 계산함. 단위 계수가 하드코딩(mV/uAh) | 데이터셋별 sha256+단위 키로 요약 행 재사용, library 메타데이터 단위 사용(미확정이면 요약 제외) | 완료 |
+| G2 | 변경 없는 재빌드도 약 100 s (NAS의 사이드카 2,932개 확인) | 단계별 입력 지문(`db/build_state.json`)으로 미변경 단계 건너뜀 → 0.1 s, `--force`로 전체 재계산 | 완료 |
+| G3 | 채널 이상·집게 불량 등 `anomaly` 시험(6 run)이 설계 통계에 포함됨 | 관측값은 보존, 셀·설계 요약에서 제외, `identity_gaps.csv`에 `anomaly:*` 표시 | 완료 |
+| G4 | 설계 확정이 태그 1개/시험 키 단위라 후보 설계를 통째로 확정·병합하기 어려움 | `design_candidates.csv`(설계 후보별 시험·셀 수·태그·충돌·샘플명) 생성, `design_map.csv`에 `match_type=candidate` 추가 | 완료 |
+| G5 | 거미줄 기본 코호트가 설계 2개짜리, 115개 설계 코호트에서 간선 6,555개로 판독 불가 | 설계 수 많은 코호트 우선, 30개 초과 시 노드별 상위 3개 간선만 표시, 라벨은 툴팁·선택 시 | 완료 |
+| G6 | 시험 온도 미상 405/513 → 코호트 키 대부분 `T?` | 파일명에 온도 근거가 거의 없음(후보 11건도 25/45 혼재). DX 분류표 `temperature_c` 입력이 필요 | 사용자 입력 |
+| G7 | 설계·셀 확정 0건 (후보 306, provisional 셀 1,537) | `design_candidates.csv` → `design_map.csv`, `dx_files.csv`의 `physical_cell_id` 입력 | 사용자 입력 |
+| G8 | Parquet 비교 작업실은 여전히 4개 프로파일 지표 사용 | 작업실 지표를 `run_metrics`로 교체 또는 작업실을 거미줄 쌍 비교로 대체할지 결정 | 다음 |
+| G9 | 파생 사이클 기반 지표의 검증 (라벨 있는 파일 대비 유지율·CE 비교) 미수행 | 라벨 있는 데이터셋으로 run 지표 교차 검증 리포트 | 다음 |
+| G10 | 저항·휴지(rest) 지표 없음 | 펄스 구간 ΔV/ΔI(유도 전류 한계 검토 후) | 다음 (P6) |
+
+## 7. 진행 기록
+
+- 2026-10-24: 3.4.0 정리(원시 DB·카탈로그 생성기 제거, 스탬프 검증, 파생 step/cycle). 본 로드맵 수립.
+- 2026-10-24: P1~P5 구현 (3.5.0). `cyc2parquet` 분리, `run_metrics`/`research_db`/`design_network`/`db_build`, 데스크톱·CLI 연결. 구현 점검 G1~G5 반영.

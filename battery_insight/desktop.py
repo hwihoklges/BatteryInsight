@@ -138,7 +138,10 @@ class BatteryInsightApp:
         frame = self.analysis_tab
         ttk.Label(frame, text="설계·전기화학 관계망 / 레이더 / 조건 통제 비교 / 셀 평균 / 상관 / 궤적", font=("맑은 고딕", 14, "bold")).pack(anchor="w", pady=8)
         ttk.Label(frame, text="비교 작업실에서 기능과 지표를 각각 켜고 끌 수 있습니다. 셀 평균은 같은 설계·배치·확인된 시험 조건·관측 구간에서 물리 셀마다 동일한 비중으로 계산합니다.", wraplength=1000).pack(anchor="w", pady=8)
-        for text, command in (("현재 Parquet DB로 비교 작업실 열기", self.open_library_workbench),
+        for text, command in (("설계 비교 DB 갱신 (파생 사이클·지표·관계망)", self.build_research_db),
+                              ("설계 관계망 열기", lambda: self.open_path(self.project_root() / "db/network.html")),
+                              ("설계 확정표 열기 (design_map.csv)", lambda: self.open_path(self.project_root() / "db/design_map.csv")),
+                              ("현재 Parquet DB로 비교 작업실 열기", self.open_library_workbench),
                               ("지표 사전·중복 정리 결과", self.open_catalog),
                               ("선택 데이터에 기존 AIM/외부 지표 연결", self.import_features),
                               ("기존 raw DB / 분석 설정의 작업실 열기", self.open_legacy),
@@ -458,6 +461,12 @@ class BatteryInsightApp:
         from .library_workbench import workbench_config
         project = self.project_root()
         self.task("Parquet 비교 작업실", lambda: self.start_workbench(workbench_config(project), project / "workbench"), after=lambda address: webbrowser.open(address))
+
+    def build_research_db(self):
+        from .db_build import build_database
+        project = self.project_root()
+        self.task("설계 비교 DB 갱신", lambda: build_database(project, progress=self.progress),
+                  after=lambda result: self.open_path(project / "db/network.html"))
 
     def open_catalog(self):
         root = Path(__file__).parent / "resources/catalog"

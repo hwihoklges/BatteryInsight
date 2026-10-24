@@ -14,7 +14,7 @@ from . import __version__
 COMMANDS = {"desktop", "cyc-import", "library-scan", "library-export", "library-assign", "library-rules",
             "library-open", "library-documents", "library-candidates", "library-link", "library-features", "self-test", "check-gui", "version",
             "trace-extract", "trace-import", "trace-review", "trace-report", "trace-export", "trace-demo",
-            "copilot-check", "copilot-prepare", "copilot-run", "copilot-import"}
+            "copilot-check", "copilot-prepare", "copilot-run", "copilot-import", "db-build", "network"}
 
 
 class Parser(argparse.ArgumentParser):
@@ -111,6 +111,9 @@ def main(argv=None):
             parser.add_argument("--documents", nargs="+")
             parser.add_argument("--build-only", action="store_true")
             parser.add_argument("--port", type=int, default=0)
+            parser.add_argument("--workers", type=int, default=8)
+            parser.add_argument("--no-network", action="store_true")
+            parser.add_argument("--force", action="store_true")
             args = parser.parse_args(cleaned)
             from . import library
             if args.command in {"self-test", "check-gui", "version", "desktop"}:
@@ -208,6 +211,17 @@ def main(argv=None):
                     result = library.link_record(args.project, args.dataset, args.record)
                 elif args.command == "library-features":
                     result = library.import_feature_export(args.project, args.dataset, args.spec)
+                elif args.command == "db-build":
+                    from .db_build import build_database
+                    result = build_database(args.project, workers=args.workers, network=not args.no_network, force=args.force,
+                                            progress=lambda message: print(message, file=sys.stderr) if sys.stderr else None)
+                elif args.command == "network":
+                    from .design_network import build_network
+                    output = Path(build_network(args.project))
+                    result = {"output": str(output)}
+                    if not args.build_only:
+                        import webbrowser
+                        webbrowser.open(output.resolve().as_uri())
                 elif args.command == "library-open":
                     from .library_workbench import workbench_config
                     from .workbench_server import Workbench, serve_workbench
