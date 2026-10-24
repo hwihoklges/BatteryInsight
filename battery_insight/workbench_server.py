@@ -241,9 +241,6 @@ class Workbench:
             if _load(self.config_path).get("parquet_library"):
                 from .library_workbench import build_library_bundle
                 self.bundle = build_library_bundle(self.config_path, self.output)
-            elif _load(self.config_path).get("database_path"):
-                from .database_workbench import build_database_bundle
-                self.bundle = build_database_bundle(self.config_path, self.output)
             else:
                 payload = update_experiments(self.config_path, self.output, verify_all=self.verify_all, render_report=False)
                 config, _, registry, rows = self._config_rows()
@@ -408,15 +405,10 @@ class Workbench:
                 if reference is None:
                     raise ValueError("Parquet source reference not found")
                 return library_evidence(reference, cycle)
-            if self.bundle.get("source_mode") == "database":
-                reference = self.bundle.get("evidence_references", {}).get(experiment_id)
-                if reference is None:
-                    raise ValueError("Experiment has no enabled completed database run")
-                return read_evidence(self.output, experiment_id, cycle, reference=reference)
             return read_evidence(self.output, experiment_id, cycle)
 
     def _require_registration(self):
-        if _load(self.config_path).get("database_path") or _load(self.config_path).get("parquet_library"):
+        if _load(self.config_path).get("parquet_library"):
             raise ValueError(self.bundle.get("capabilities", {}).get("registration_reason", "Database registration is read-only here; edit the database experiments.csv metadata and refresh"))
 
     def preview_upload(self, content, filename, sheet=None, mapping=None):

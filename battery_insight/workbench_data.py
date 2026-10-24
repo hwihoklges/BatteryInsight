@@ -464,38 +464,30 @@ def _display_derivatives(segment, direction, settings):
              "downsampled": len(indices) < len(dq_dv), "original_derivative_points": len(dq_dv)})
 
 
-def read_evidence(output: Path, experiment_id: str, cycle: float | None = None, *, reference=None) -> dict:
+def read_evidence(output: Path, experiment_id: str, cycle: float | None = None) -> dict:
     output = Path(output).resolve()
-    if reference is not None:
-        from .database_workbench import checked_database_reference
-        row, run, source, snapshot = checked_database_reference(reference)
-        if row["experiment_id"] != experiment_id:
-            raise ValueError("Database evidence reference has a different experiment identity")
-        entry = {"raw_sha256": reference["source_sha256"]}
-        provenance = [source]
-    else:
-        state = _load(output / "update_state.json")
-        entry = state.get("records", {}).get(experiment_id)
-        if entry is None:
-            raise ValueError("Experiment has no completed raw run; it may be pending")
-        registry = pd.read_csv(output / "experiments.csv", dtype=str, keep_default_na=False)
-        match = registry.loc[registry.experiment_id.eq(experiment_id)]
-        if len(match) != 1:
-            raise ValueError("Experiment identity missing or ambiguous")
-        row = match.iloc[0].to_dict()
-        run = Path(entry["run_path"]).resolve()
-        if not run.is_relative_to(output / "lake"):
-            raise ValueError("Evidence run is outside this workbench lake")
-        # Recover test_type only from the verified legacy source mapping.
-        snapshot = _load(checked_artifact(run, "config_snapshot.json"))
-        sources = [s for s in snapshot.get("sources", []) if str(s.get("cell_id")) == row["cell_id"] and str(s.get("test_id")) == row["test_id"]]
-        if len(sources) != 1:
-            raise ValueError("Verified source mapping is missing or ambiguous")
-        row["test_type"] = sources[0]["test_type"]
-        inputs = _load(checked_artifact(run, "input_snapshot.json"))
-        provenance = [item for item in inputs if item.get("kind") == "raw" and str(item.get("cell_id")) == row["cell_id"] and str(item.get("test_id")) == row["test_id"]]
-        if len(provenance) != 1 or provenance[0].get("sha256") != entry.get("raw_sha256"):
-            raise ValueError("Evidence raw provenance differs from the completed registration run")
+    state = _load(output / "update_state.json")
+    entry = state.get("records", {}).get(experiment_id)
+    if entry is None:
+        raise ValueError("Experiment has no completed raw run; it may be pending")
+    registry = pd.read_csv(output / "experiments.csv", dtype=str, keep_default_na=False)
+    match = registry.loc[registry.experiment_id.eq(experiment_id)]
+    if len(match) != 1:
+        raise ValueError("Experiment identity missing or ambiguous")
+    row = match.iloc[0].to_dict()
+    run = Path(entry["run_path"]).resolve()
+    if not run.is_relative_to(output / "lake"):
+        raise ValueError("Evidence run is outside this workbench lake")
+    # Recover test_type only from the verified legacy source mapping.
+    snapshot = _load(checked_artifact(run, "config_snapshot.json"))
+    sources = [s for s in snapshot.get("sources", []) if str(s.get("cell_id")) == row["cell_id"] and str(s.get("test_id")) == row["test_id"]]
+    if len(sources) != 1:
+        raise ValueError("Verified source mapping is missing or ambiguous")
+    row["test_type"] = sources[0]["test_type"]
+    inputs = _load(checked_artifact(run, "input_snapshot.json"))
+    provenance = [item for item in inputs if item.get("kind") == "raw" and str(item.get("cell_id")) == row["cell_id"] and str(item.get("test_id")) == row["test_id"]]
+    if len(provenance) != 1 or provenance[0].get("sha256") != entry.get("raw_sha256"):
+        raise ValueError("Evidence raw provenance differs from the completed registration run")
     cycles = mapped_cycles(run, row).sort_values("cycle")
     if cycles.empty:
         raise ValueError("No cycles are available for this experiment")
@@ -516,13 +508,7 @@ def read_evidence(output: Path, experiment_id: str, cycle: float | None = None, 
     unavailable_signals = [name for name in signal_names if name not in frame]
     settings = DEFAULTS | snapshot.get("features", {})
     if not frame.empty:
-        if provenance[0].get("kind") == "pne_restore":
-            members = {item.get("member", item.get("path")): item["sha256"] for item in provenance[0].get("members", [])}
-            if not {"source_member", "source_member_row"}.issubset(frame) or not members:
-                raise ValueError("Native evidence requires source member hashes and physical member rows")
-            if not frame.source_hash.eq(frame.source_member.map(members)).all():
-                raise ValueError("Normalized evidence member hash differs from run input snapshot")
-        elif not frame.source_hash.eq(provenance[0]["sha256"]).all():
+        if not frame.source_hash.eq(provenance[0]["sha256"]).all():
             raise ValueError("Normalized evidence source hash differs from run input snapshot")
         frame = frame.sort_values("source_row", kind="stable")
         if unavailable_signals:
@@ -569,8 +555,6 @@ def read_evidence(output: Path, experiment_id: str, cycle: float | None = None, 
             if len(table) > 10000:
                 raise ValueError(f"Evidence row limit exceeded: {name}")
         tables[name] = table.to_dict("records")
-    if reference is not None:
-        checked_database_reference(reference)  # Reject a concurrently replaced run manifest.
     return json_safe({"schema_version": "experiment_evidence_v1", "experiment_id": experiment_id, "selected_cycle": float(cycle),
                       "cycles": cycles[["cycle", "life_index"]].to_dict("records"), "curves": curves, **tables,
                       "warnings": warnings, "source_hash": entry.get("raw_sha256"), "run_path": str(run),

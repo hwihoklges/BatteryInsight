@@ -34,16 +34,6 @@ def main(argv=None) -> int:
     review.add_argument("--decision", choices=["accepted", "rejected", "needs_evidence"], required=True)
     review.add_argument("--reason", required=True)
     review.add_argument("--reviewer", required=True)
-    catalog = commands.add_parser("catalog", help="List and organize existing electrochemical metrics without machine learning or raw analysis")
-    catalog.add_argument("--cyclediag-root", required=True)
-    catalog.add_argument("--studio-root", required=True)
-    catalog.add_argument("--exports", nargs="*", default=[])
-    catalog.add_argument("--out", required=True)
-    catalog.add_argument("--full", action="store_true", help="Write the unpruned inventory; default selects representative lifetime indicators")
-    prune = commands.add_parser("prune", help="Reduce an existing full metric catalog, preserving an audit ledger")
-    prune.add_argument("--catalog", required=True, help="Full source catalog CSV or Parquet, not the reduced primary list")
-    prune.add_argument("--registry", required=True, help="Source indicator_registry.py; read through AST only")
-    prune.add_argument("--out", required=True)
     for name in ("update", "watch"):
         updating = commands.add_parser(name, help="Registered raw inbox -> experiment network and indicator correlations")
         updating.add_argument("--config", required=True)
@@ -60,48 +50,11 @@ def main(argv=None) -> int:
     workbench.add_argument("--verify-all", action="store_true")
     workbench.add_argument("--open", action="store_true", help="Open the local workspace in the browser")
     workbench.add_argument("--build-only", action="store_true", help="Build a saved preview without running a server")
-    db_scan = commands.add_parser("database-scan", help="Discover native PNE Restore channels without extracting ZIPs")
-    db_scan.add_argument("--sources", nargs="+", required=True)
-    db_scan.add_argument("--out", required=True)
-    db_import = commands.add_parser("database-import", help="Native PNE -> selected compressed Parquet and SQLite catalog")
-    db_import.add_argument("--config", required=True)
-    db_import.add_argument("--out", required=True)
-    db_query = commands.add_parser("database-query", help="Export selected verified feature partitions from the current database")
-    db_query.add_argument("--database", required=True)
-    db_query.add_argument("--table", choices=["cycles", "pulses", "quality", "diagnostics", "life_summary"], default="cycles")
-    db_query.add_argument("--experiments", nargs="*")
-    db_query.add_argument("--columns", nargs="*")
-    db_query.add_argument("--out", required=True)
     args = parser.parse_args(argv)
     try:
         if args.command.startswith("knowledge-"):
             from .knowledge_cli import run_knowledge_command
             return run_knowledge_command(args)
-        elif args.command == "database-scan":
-            from .pne import discover_pne_sources
-            discovered = [item for path in args.sources for item in discover_pne_sources(path)]
-            save_json(Path(args.out), {"channels": discovered, "channel_count": len(discovered), "raw_modified": False})
-            print(f"{len(discovered)} channels: {args.out}")
-        elif args.command == "database-import":
-            from .database import import_database
-            result = import_database(args.config, args.out,
-                progress=lambda item: print(json.dumps(item, ensure_ascii=False), flush=True))
-            print(json.dumps(result["summary"], ensure_ascii=False))
-            print(Path(args.out).resolve() / "database_manifest.json")
-            if result["summary"]["failed"]:
-                return 2
-        elif args.command == "database-query":
-            from .database import query_feature_table
-            frame = query_feature_table(args.database, args.table, experiment_ids=args.experiments, columns=args.columns)
-            output = Path(args.out)
-            output.parent.mkdir(parents=True, exist_ok=True)
-            if output.suffix.lower() == ".parquet":
-                frame.to_parquet(output, index=False, compression="zstd", compression_level=19)
-            elif output.suffix.lower() == ".csv":
-                frame.to_csv(output, index=False, encoding="utf-8-sig")
-            else:
-                raise ValueError("Database query output must be .parquet or .csv")
-            print(f"{len(frame)} rows: {output}")
         elif args.command == "workbench":
             from .workbench_server import Workbench, serve_workbench
             if args.build_only:
@@ -140,26 +93,6 @@ def main(argv=None) -> int:
                     if server is not None:
                         server.shutdown()
                         server.server_close()
-        elif args.command == "catalog":
-            from .catalog import build_catalog
-            from .catalog_report import write_catalog
-            frame = build_catalog(args.cyclediag_root, args.studio_root, args.exports)
-            if args.full:
-                summary = write_catalog(frame, args.out)
-            else:
-                from .dedup import write_pruned_catalog
-                summary = write_pruned_catalog(frame, args.out, Path(args.cyclediag_root) / "features" / "indicator_registry.py")
-            print(json.dumps(summary, ensure_ascii=False))
-            print(Path(args.out) / "metrics_catalog.html")
-        elif args.command == "prune":
-            from .dedup import write_pruned_catalog
-            p = Path(args.catalog)
-            if p.suffix.lower() not in {".csv", ".parquet"}:
-                raise ValueError("Catalog must be CSV or Parquet")
-            frame = pd.read_parquet(p) if p.suffix.lower() == ".parquet" else pd.read_csv(p, encoding="utf-8-sig", keep_default_na=False)
-            summary = write_pruned_catalog(frame, args.out, args.registry)
-            print(json.dumps(summary, ensure_ascii=False))
-            print(Path(args.out) / "metrics_catalog.html")
         elif args.command == "run":
             print(run_pipeline(args.config, args.out))
         elif args.command == "inspect":

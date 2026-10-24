@@ -10,7 +10,6 @@ import os
 def add_knowledge_commands(commands):
     init = commands.add_parser('knowledge-init', help='Initialize an evidence registry and intake checklist')
     init.add_argument('--out', required=True)
-    init.add_argument('--database', help='Optional raw DB to prepare an unconfirmed raw-key inventory')
     intake = commands.add_parser('knowledge-intake', help='Extract local slide/page evidence without asserting experiment facts')
     intake.add_argument('--registry', required=True)
     intake.add_argument('--documents', nargs='+', required=True)
@@ -21,15 +20,6 @@ def add_knowledge_commands(commands):
     records.add_argument('--reviewer')
     records.add_argument('--reason')
     records.add_argument('--out', help='Optional refreshed review directory')
-    match = commands.add_parser('knowledge-match', help='Propose date/set/sample matches; never auto-confirm')
-    match.add_argument('--registry', required=True)
-    match.add_argument('--database', required=True)
-    match.add_argument('--raw-keys', help='Explicitly reviewed raw keys CSV or JSON; filename hints are not keys')
-    match.add_argument('--out', required=True)
-    link = commands.add_parser('knowledge-link', help='Confirm, reject or clear individual links in a separate overlay')
-    for name in ('registry', 'database', 'proposals', 'decisions', 'reviewer', 'reason', 'out'):
-        link.add_argument('--' + name, required=True)
-    link.add_argument('--previous', help='Existing overlay, preserving earlier confirmations and review events')
     export = commands.add_parser('knowledge-export', help='Export the evidence registry and outstanding questions')
     export.add_argument('--registry', required=True)
     export.add_argument('--out', required=True)
@@ -76,13 +66,6 @@ def run_knowledge_command(args):
         write_templates(root)
         with KnowledgeRegistry(root / 'knowledge.sqlite3') as registry:
             snapshot = registry.snapshot()
-        if args.database:
-            from .raw_linking import write_raw_key_template, raw_inventory
-            path = root / 'raw_keys.csv'
-            # A filled key sheet belongs to the user. Reinitialization must not erase it.
-            inventory = write_raw_key_template(args.database, path) if not path.exists() else raw_inventory(args.database)
-            _write_json(root / 'raw_inventory.json', inventory)
-            snapshot['raw_inventory_summary'] = {'experiments': len(inventory['rows']), 'database_path': inventory['database_path']}
         print(write_review(snapshot, root))
     elif command == 'knowledge-intake':
         from .document_intake import extract_document
@@ -115,26 +98,6 @@ def run_knowledge_command(args):
         print(json.dumps({'records': [{'record_id': r['record_id'], 'revision': r['revision'], 'status': r['status']} for r in records]}, ensure_ascii=False))
         if args.out:
             print(write_review(snapshot, args.out))
-    elif command == 'knowledge-match':
-        from .raw_linking import propose_links
-        with KnowledgeRegistry(_require_registry(args.registry), read_only=True) as registry:
-            snapshot = registry.snapshot()
-        proposals = propose_links(args.database, snapshot['records'], args.raw_keys)
-        print(write_review(snapshot, args.out, proposals=proposals))
-    elif command == 'knowledge-link':
-        from .raw_linking import review_links
-        out = Path(args.out).resolve()
-        database = Path(args.database).resolve()
-        protected = {_require_registry(args.registry), Path(args.proposals).resolve(), Path(args.decisions).resolve()}
-        if out in protected or out.is_relative_to(database):
-            raise ValueError('Write links outside the raw database and input/registry files')
-        # Updating an overlay preserves its events unless a different previous file is explicit.
-        previous = args.previous or (str(out) if out.exists() else None)
-        with KnowledgeRegistry(_require_registry(args.registry), read_only=True) as registry:
-            overlay = review_links(args.database, registry, args.proposals, _read_rows(args.decisions, 'decisions'),
-                                   args.reviewer, args.reason, existing_overlay=previous)
-        _write_json(out, overlay)
-        print(out)
     elif command == 'knowledge-export':
         with KnowledgeRegistry(_require_registry(args.registry), read_only=True) as registry:
             snapshot = registry.snapshot()

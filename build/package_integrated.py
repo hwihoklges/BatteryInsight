@@ -58,7 +58,7 @@ def main():
     compatibility = json.loads((ROOT / "work/traceability_321_compatibility.json").read_text(encoding="utf-8"))
     if not compatibility["all_existing_edges_readable"] or not compatibility["raw_links_valid"]:
         raise SystemExit("Existing reviewed project links must remain readable.")
-    validation = {"application": "BatteryInsight", "version": "3.3.0", "exe_sha256": sha(exe), "exe_bytes": exe.stat().st_size,
+    validation = {"application": "BatteryInsight", "version": "3.4.0", "exe_sha256": sha(exe), "exe_bytes": exe.stat().st_size,
         "tests": suites, "frozen_execution": {"status": frozen["status"], "scope": frozen["scope"], "summary": frozen["summary"],
             "selftest_checks": frozen["selftest_checks"], "gui_checks": frozen["gui_checks"], "checks": frozen["checks"]},
         "existing_comparison_browser": browser, "traceability_browser": trace_browser, "existing_project_compatibility": compatibility,

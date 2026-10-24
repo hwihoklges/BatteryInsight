@@ -1,5 +1,14 @@
 # Battery Insight — 전기화학 데이터 정리·분석 코드
 
+## 3.4.0: 패키지 정리·효율화와 파생 step/cycle
+
+원본 검증은 크기·수정시각 스탬프로 빠르게 확인하고(변경 의심 시에만 SHA-256), 사이클 라벨이 없는 파일은 파생 사이클 열로 비교합니다. 파생값은 원본을 바꾸지 않고 `<project>/derived/` 사이드카에 저장합니다. 별도 raw DB·지표 사전 생성기 등 사용하지 않는 기능을 제거했습니다. 자세한 내용은 [ROADMAP.md](ROADMAP.md)의 3.4.0 항목을 참조하세요.
+
+```powershell
+python -m battery_insight.derived_steps --project D:/BIProject
+python -m battery_insight.derived_cycles --project D:/BIProject
+```
+
 ## 3.3.0: 회사 Copilot CLI 선택 연결
 
 공정 추적 창의 **회사 Copilot CLI**에서 설치한 GitHub Copilot CLI의 회사 로그인과 기본 모델을 사용해 선택 장표의 텍스트·표를 해석합니다. 결과는 근거를 검사해 검토 대기에 추가하며 셀·시험·raw 연결을 자동 확정하지 않습니다. 오프라인 데이터 PC와 회사 CLI PC 사이의 요청/응답 JSON 이동도 지원합니다.
@@ -46,11 +55,11 @@ PPTX·PDF를 하나씩 추가해 **문서 → 페이지/슬라이드 근거 → 
 
 ```powershell
 python -m pip install -e ".[documents]"
-python -m battery_insight knowledge-init --out ../experiment_knowledge --database ../raw_database
+python -m battery_insight knowledge-init --out ../experiment_knowledge
 python -m battery_insight knowledge-intake --registry ../experiment_knowledge/knowledge.sqlite3 --documents "실험장표.pptx" --out ../experiment_knowledge/review
 ```
 
-실제 장표는 아직 등록하지 않았다. `../experiment_knowledge/`에 빈 DB, 등록 템플릿, 기존 36개 raw 시험의 미확정 연결 준비표를 만들었다. 문서 수집만으로 실험 기록이나 연결이 확정되지는 않는다. 등록은 `knowledge-records`, 후보 생성은 `knowledge-match`, 확정·해제는 `knowledge-link`로 수행하며 전체 검토표는 `knowledge-export`로 갱신한다. 각 명령의 입력은 `--help`에서 확인한다. 한 번 발급된 `record_id`는 다음 수정 때 그대로 사용해 버전 이력을 이어간다.
+실제 장표는 아직 등록하지 않았다. 문서 수집만으로 실험 기록이나 연결이 확정되지는 않는다. 등록은 `knowledge-records`, 전체 검토표는 `knowledge-export`로 갱신하며, 확정 기록과 Parquet 데이터셋의 연결은 `library-candidates`/`library-link`로 수행한다. 각 명령의 입력은 `--help`에서 확인한다. 한 번 발급된 `record_id`는 다음 수정 때 그대로 사용해 버전 이력을 이어간다.
 
 시험 시작일·종료일·제조일·보고일, 샘플 ID·물리 셀 ID를 구분한다. 세트번호는 문자열로 저장해 선행 0을 보존한다. 그림으로 붙인 표·스캔 PDF·그래프 숫자는 자동으로 사실 확정하지 않으며 확인 대기다. 문서 해석이나 raw 원본이 바뀐 연결은 보류 사유를 표시한다. [합성 장표 연결 예시](demo_knowledge/knowledge_review/index.html)는 실제 사용자 자료가 아니다.
 
@@ -70,14 +79,13 @@ python -m battery_insight knowledge-intake --registry ../experiment_knowledge/kn
 `keep_columns`로 보존 열을 추가하고, `keep_cycles`/`keep_steps`로 보존 대상을 명시할 수 있다. 기본값은 전체 사이클·전체 step이다. 저장 필터는 지표 추출 후 적용하므로 지표 계산 범위를 바꾸지 않는다. 전류를 생략한 DB에서는 전압 곡선을 그대로 조회할 수 있지만 DCIR 등 전류 의존 지표를 새로 계산하려면 원본을 다시 읽어야 한다.
 
 ```powershell
-python -m battery_insight database-import --config examples/database.template.json --out D:/BatteryDatabase
-python -m battery_insight database-query --database D:/BatteryDatabase --table cycles --out cycle_metrics.parquet
-python -m battery_insight workbench --config D:/BatteryDatabase/workbench_config.json --out D:/BatteryDatabase/workbench --open
+python -m battery_insight library-scan --project D:/BIProject --input D:/Parquet
+python -m battery_insight library-open --project D:/BIProject
 ```
 
-`examples/database.template.json`의 경로·시험 종류·RPT 시점을 실제 값으로 바꾼다. 비교 설정은 `examples/database_workbench.template.json`을 복사해 `database_path`와 관측점/구간을 지정한다. 네이티브 입력은 이번 실제 파일로 검증한 `pne_restore_51_smallcell_v1` 스키마를 사용하며, 다른 장비 단위/포맷을 자동 추측하지 않는다. `catalog.sqlite3`는 실험·설계·출처 인덱스이고 큰 시계열과 지표는 Parquet에 저장한다. 같은 원본·설정·코드의 완료 결과는 해시를 검증해 재사용한다. 새 원본을 설정에 추가하고 다시 실행하면 새 결과를 등록한다.
+3.4.0부터 별도 raw DB(`database-import`/`database-query`)와 그 비교 모드는 제거했다. 변환·등록은 프로젝트 라이브러리(`cyc-import`, `library-scan`)로 일원화했다. 네이티브 입력은 검증한 CYC 스키마를 사용하며, 다른 장비 단위/포맷을 자동 추측하지 않는다. 큰 시계열과 지표는 Parquet에 저장하고 같은 원본(크기·수정시각 스탬프, 필요 시 SHA-256)의 결과는 재사용한다.
 
-실제 제공 자료용 설정·등록표·실행 파일은 `../raw_database/`에 있다. `experiments.csv`에서 `physical_cell_id`, `design_id`, `batch_id`, 소재·조성·로딩·조건을 채운 뒤 비교 화면을 새로고침한다. 원본 채널 ID는 그대로 두고 `physical_cell_id`로 여러 시험에서 같은 물리 셀을 연결한다. 자료에 없는 설계/배치/온도/SOC/CC·CV를 파일명으로 추정하지 않는다.
+등록표에서 `physical_cell_id`, `design_id`, `batch_id`, 소재·조성·로딩·조건을 채운 뒤 비교 화면을 새로고침한다. 원본 채널 ID는 그대로 두고 `physical_cell_id`로 여러 시험에서 같은 물리 셀을 연결한다. 자료에 없는 설계/배치/온도/SOC/CC·CV를 파일명으로 추정하지 않는다.
 
 평균은 **같은 설계·배치·시험 조건·RPT 시점/관측 구간** 안에서 물리 셀마다 동일 비중으로 계산한다. 같은 셀의 반복 시험은 먼저 중앙값 하나로 정리하고, 여러 셀은 산술평균·표본 표준편차·유효 셀 수로 표시한다. 물리 셀이나 설계/배치가 미확인인 채널은 평균에서 제외하며 개별 시험은 계속 조회할 수 있다. RPT 내부 cycle을 수명 cycle로 오인하지 않도록 축을 나누고, 특정 내부 cycle 하나만 비교하는 `snapshot`도 지원한다.
 
@@ -109,23 +117,11 @@ python -m battery_insight watch --config my_relations.json --out D:/BatteryRelat
 
 watch 실행 중 새 raw·등록표를 확인하고 `http://127.0.0.1:8765/`에서 두 지도를 갱신한다. 설정 템플릿은 `examples/relations.template.json`, `examples/experiments.template.csv`다. 미등록·기록 중·실패 파일은 상태 표에 표시한다. 전기화학 지도에는 레이더와 셀 단위 Spearman 상관행렬도 있다. 머신러닝은 사용하지 않는다. 입력 기준과 사용법은 [RELATIONS.md](RELATIONS.md)를 참조한다.
 
-## 우선 사용할 기능: 지표 목록 정리 (머신러닝 없음)
+## 지표 목록 (머신러닝 없음)
 
-현재 목표는 AIM 관련 지표를 포함한 **기존 전기화학 feature를 나열하고 정의·단위·출처별로 정리**하는 것이다. 모델 학습·예측은 필수 범위에서 제외했다. 아래 명령은 raw를 분석하지 않고 코드의 지표 사전을 만든다.
+AIM 관련 지표를 포함한 **기존 전기화학 feature를 정의·단위·출처별로 정리한 사전**을 `battery_insight/resources/catalog/`에 동봉한다. 데스크톱의 지표 목록 버튼이 `metrics_catalog.html`을 연다.
 
-```powershell
-python -m battery_insight catalog --cyclediag-root C:/Users/LGES/Cursor/cyclediag --studio-root C:/Users/LGES/Cursor/pne_studio2 --out catalog
-```
-
-`catalog/metrics_catalog.html`은 **중복 정리 후 대표 지표 223개**를 검색하는 기본 목록이며, `metrics_catalog.csv`는 같은 목록의 Excel용 표다. 전체 589개 중 108개를 중복 표현·계열 대표 선택·구현 대체로 제외했다. 품질·조건·진단 등 보조 150개와 정의/출력 확인이 필요한 108개는 따로 보존한다. 전체 사전은 `catalog/all_metrics/`, 제외 항목과 대표·근거는 `catalog/removed_duplicates.csv`, 전체 판정은 `catalog/pruning_decisions.csv`에 있다. 자세한 선정 기준은 [PRUNING.md](PRUNING.md)를 참조한다. 기존 실제 export의 생성된 컬럼까지 대조하려면 `--exports path/to/cycle_indicators.csv`를 추가한다. export의 **헤더만** 읽으며 셀 데이터 분석은 하지 않는다.
-
-`catalog` 명령은 앞으로도 기본으로 대표 지표를 선택한다. 정리 전 전체 사전만 만들려면 `--full --out catalog_full`을 쓴다. 저장한 **전체 사전**에 정리 규칙만 다시 적용하려면:
-
-```powershell
-python -m battery_insight prune --catalog catalog/all_metrics/metrics_catalog.parquet --registry C:/Users/LGES/Cursor/cyclediag/features/indicator_registry.py --out catalog
-```
-
-이미 줄인 `catalog/metrics_catalog.*`를 `prune`에 넣으면 원래 항목이 사라지므로 오류로 거부한다. 같은 전체 사전으로 재실행하면 같은 대표를 선택한다. 정리는 **기본 목록의 선택**이며 원본 extractor, raw, 기존 export 값은 그대로다. 원값·baseline을 보관하고, 실제 값 병합·단위 변환에는 이 선택표를 사용하지 않는다.
+`metrics_catalog.html`은 **중복 정리 후 대표 지표 223개**를 검색하는 기본 목록이며, `metrics_catalog.csv`는 같은 목록의 Excel용 표다. 전체 589개 중 108개를 중복 표현·계열 대표 선택·구현 대체로 제외했다. 품질·조건·진단 등 보조 150개와 정의/출력 확인이 필요한 108개는 따로 보존한다. 전체 사전은 `all_metrics/`, 제외 항목과 대표·근거는 `removed_duplicates.csv`, 전체 판정은 `pruning_decisions.csv`에 있다. 자세한 선정 기준은 [PRUNING.md](PRUNING.md)를 참조한다. 사전을 만들던 `catalog`/`prune` 명령은 3.4.0에서 제거했으며(소스 저장소 접근이 필요한 일회성 생성기), 동봉된 결과물은 그대로 유지한다.
 
 별도 AIM 명세는 아직 확인되지 않아 AIM에 속한 모든 지표라고 단정하지 않는다. 같은 이름의 다른 정의, alias의 수치 변환, 확인되지 않은 단위를 드러내는 구조다. 아래 raw 파이프라인은 최초 요청에 맞춰 함께 구현한 선택 기능이며 목록 작성에 필수는 아니다.
 

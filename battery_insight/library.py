@@ -8,6 +8,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from datetime import date, datetime, timezone
 import fnmatch
+import functools
 import hashlib
 import json
 import math
@@ -38,12 +39,43 @@ def identity(value):
     return hashlib.sha256(canonical(value).encode()).hexdigest()
 
 
+_HASHES = {}
+
+
+def file_stamp(path):
+    info = Path(path).stat()
+    return [info.st_size, info.st_mtime_ns]
+
+
 def file_hash(path):
+    # Memoised per process by (path, size, mtime_ns): repeated verification of
+    # the same unchanged multi-GB library no longer re-reads every byte.
+    path = Path(path)
+    key = (str(path.resolve()), *file_stamp(path))
+    if key in _HASHES:
+        return _HASHES[key]
     result = hashlib.sha256()
-    with Path(path).open("rb") as stream:
+    with path.open("rb") as stream:
         for data in iter(lambda: stream.read(1024 * 1024), b""):
             result.update(data)
+    if list(key[1:]) == file_stamp(path):
+        _HASHES[key] = result.hexdigest()
     return result.hexdigest()
+
+
+def source_unchanged(row, *, strict=False):
+    """True when the registered Parquet still matches its catalogued SHA-256.
+
+    Fast path: the size/mtime stamp recorded when the hash was computed still
+    matches (``strict=True`` forces a full re-hash).
+    """
+    try:
+        stamp = file_stamp(row["path"])
+    except OSError:
+        return False
+    if not strict and row.get("stamp") == stamp:
+        return True
+    return file_hash(row["path"]) == row["sha256"]
 
 
 def atomic_json(path, value):
@@ -155,13 +187,19 @@ def event(db, action, payload):
     db.execute("INSERT INTO library_events(at,action,payload) VALUES(?,?,?)", (now(), action, canonical(payload)))
 
 
+@functools.lru_cache(maxsize=1024)
+def _resolved(path):
+    # realpath on the NAS costs ~9 ms per call; roots are few and stable.
+    return Path(path).resolve()
+
+
 def project_path(project, path):
-    root, path = Path(project).resolve(), Path(path).resolve()
+    root, path = _resolved(str(project)), Path(path).resolve()
     return path.relative_to(root).as_posix() if path.is_relative_to(root) else str(path)
 
 
 def resolve_path(project, stored):
-    return (Path(project).resolve() / stored).resolve()
+    return _resolved(str(_resolved(str(project)) / stored))
 
 
 def parquet_info(path):
@@ -212,13 +250,16 @@ def scan_folder(project, folder, *, progress=None):
             relative = path.relative_to(folder).as_posix()
             dataset = identity([root_id, relative])[:24]
             try:
-                stamp = (path.stat().st_size, path.stat().st_mtime_ns)
-                sha = file_hash(path)
+                stamp = file_stamp(path)
                 old = db.execute("SELECT sha256,payload FROM files WHERE dataset_id=?", (dataset,)).fetchone()
-                payload = json.loads(old["payload"]) if old and old["sha256"] == sha else parquet_info(path)
-                if stamp != (path.stat().st_size, path.stat().st_mtime_ns):
+                previous = json.loads(old["payload"]) if old else {}
+                # Unchanged size+mtime since the last verified hash: reuse it
+                # instead of re-reading the whole file on every rescan.
+                sha = old["sha256"] if old and previous.get("stamp") == stamp else file_hash(path)
+                payload = previous if old and old["sha256"] == sha else parquet_info(path)
+                if stamp != file_stamp(path):
                     raise ValueError("등록 중 파일이 변경됐습니다.")
-                payload.update(dataset_id=dataset, relative_path=relative, root_id=root_id,
+                payload.update(dataset_id=dataset, relative_path=relative, root_id=root_id, stamp=stamp,
                                hints=filename_hints(payload.get("source", {}).get("source_relative_path", relative)))
                 db.execute("INSERT INTO files VALUES(?,?,?,?,?,1) ON CONFLICT(dataset_id) DO UPDATE SET sha256=excluded.sha256,payload=excluded.payload,active=1",
                            (dataset, root_id, relative, sha, canonical(payload)))
@@ -282,7 +323,7 @@ def get_dataset(project, dataset_id, *, verify=True):
     if len(rows) != 1:
         raise ValueError("활성 데이터 항목을 찾을 수 없습니다.")
     row = rows[0]
-    if verify and file_hash(row["path"]) != row["sha256"]:
+    if verify and not source_unchanged(row, strict=verify == "strict"):
         raise ValueError("Parquet 파일이 변경됐습니다. 먼저 폴더를 다시 등록하세요.")
     return row
 
@@ -366,7 +407,7 @@ def import_registration(project, path, *, reviewer="local_user"):
     # Validate the complete sheet before committing any assignment.
     with connect(project) as db:
         for row, clean in checked:
-            if file_hash(row["path"]) != row["sha256"]:
+            if not source_unchanged(row):
                 raise ValueError("등록표 적용 중 원본이 바뀌었습니다.")
             _store_assignment(db, row, clean, reviewer, "확인된 실험 등록표 가져오기")
     export_library(project)
@@ -416,7 +457,7 @@ def apply_rules(project):
     if changes:
         with connect(project) as db:
             for row, updates, reason in changes:
-                if file_hash(row["path"]) != row["sha256"]:
+                if not source_unchanged(row):
                     raise ValueError("규칙 적용 중 원본이 바뀌었습니다.")
                 _store_assignment(db, row, updates, "approved_rules", reason)
         export_library(project)

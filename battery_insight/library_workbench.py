@@ -10,6 +10,17 @@ import pandas as pd
 from .library import atomic_json, file_hash, get_dataset, identity, library_rows, validate_links
 from .workbench_data import json_safe, build_workbench_bundle
 
+AXIS_LABELS = {
+    "recorded_cycle": "기록 cycle · 수명 매핑 미확정",
+    "derived_cycle": "재구성 cycle (step 패턴 추정, PNE 라벨 없음)",
+    "mixed": "비교군별 축 혼재: 기록 cycle / 재구성 cycle",
+}
+
+# Computed once per process: profile_metrics mixes this into every cache key
+# so a code change invalidates cached metrics without re-hashing this module
+# on every call (2,932 files per full bundle build).
+_MODULE_HASH = file_hash(__file__)
+
 METRICS = [
     {"metric_id": "profile.mean_voltage_v", "label": "기록점 평균 전압", "column": "mean_voltage_v", "unit": "V", "family": "profile_mean_voltage", "role": "indicator", "table": "profile"},
     {"metric_id": "profile.voltage_span_v", "label": "관측 전압 범위", "column": "voltage_span_v", "unit": "V", "family": "profile_voltage_span", "role": "indicator", "table": "profile"},
@@ -31,31 +42,110 @@ def factors(row):
             {"Ah": 1., "mAh": .001, "uAh": .000001}.get(metadata.get("capacity_unit")))
 
 
-def profile_metrics(project, row):
+def _cycle_labels_available(file):
+    """Cheaply decide whether the Parquet 'cycle' column carries any PNE label.
+
+    Uses per row-group null_count statistics when available; falls back to an
+    actual (column-only) read only if a row group lacks statistics.
+    """
+    if "cycle" not in file.schema_arrow.names:
+        return False
+    try:
+        index = file.schema_arrow.get_field_index("cycle")
+        total = file.metadata.num_rows
+        nulls = 0
+        for group in range(file.metadata.num_row_groups):
+            column_meta = file.metadata.row_group(group).column(index)
+            statistics = column_meta.statistics
+            if statistics is None or statistics.null_count is None:
+                raise ValueError("row group lacks null_count statistics")
+            nulls += statistics.null_count
+        return nulls < total
+    except Exception:
+        table = file.read(columns=["cycle"])
+        return table.column("cycle").null_count < table.num_rows
+
+
+def _load_derived_cycles(project, row):
+    """Lazily load the DERIVED cycle sidecar (module/sidecar may not exist yet).
+
+    Returns (frame, fingerprint) or (None, None). The fingerprint is a cheap
+    content hash of the sidecar rows so the profile_metrics cache key changes
+    whenever the derived sidecar is rebuilt.
+    """
+    try:
+        from .derived_cycles import load_row_cycles
+    except ImportError:
+        return None, None
+    frame = load_row_cycles(project, row["dataset_id"], row["sha256"])
+    if frame is None or frame.empty:
+        return None, None
+    frame = frame.sort_values("start_row").reset_index(drop=True)
+    fingerprint = str(int(pd.util.hash_pandas_object(frame, index=False).sum()))
+    return frame, fingerprint
+
+
+def profile_metrics(project, row, *, verified=False):
+    """Compute (or load cached) per-cycle profile metrics for one dataset.
+
+    ``verified=True`` lets a caller that has *just* confirmed the source is
+    unchanged (e.g. ``build_library_bundle``'s own ``get_dataset`` call, or
+    ``library_evidence``'s explicit sha256 check) skip a second redundant
+    freshness check here -- important across a 2,932-file / 4 GB NAS library.
+    """
     import pyarrow.parquet as pq
     vf, qf = factors(row)
-    key = identity([row["sha256"], vf, qf, file_hash(__file__)])
+    file = pq.ParquetFile(row["path"])
+    labelled = _cycle_labels_available(file)
+    derived_frame = derived_fingerprint = None
+    if not labelled and row["format"] == "native_cyc":
+        derived_frame, derived_fingerprint = _load_derived_cycles(project, row)
+    if not labelled and derived_frame is None:
+        # No real PNE cycle labels and no (or no usable) DERIVED sidecar.
+        empty = pd.DataFrame(columns=["cycle"] + [item["column"] for item in METRICS])
+        empty.attrs["axis_kind"] = "recorded_cycle"
+        return empty
+    use_derived = derived_frame is not None
+    key_parts = [row["sha256"], vf, qf, _MODULE_HASH]
+    if use_derived:
+        key_parts += ["derived_cycle_v1", derived_fingerprint]
+    key = identity(key_parts)
     cache = Path(project) / "profile_metrics" / (row["dataset_id"] + "_" + key[:20] + ".parquet")
-    get_dataset(project, row["dataset_id"])
+    if not verified:
+        get_dataset(project, row["dataset_id"])
     stamp = cache.with_suffix(".json")
     cache_valid = False
+    stamp_data = {}
     if cache.exists() and stamp.exists():
         try:
-            cache_valid = json.loads(stamp.read_text(encoding="utf-8")).get("sha256") == file_hash(cache)
+            stamp_data = json.loads(stamp.read_text(encoding="utf-8"))
+            cache_valid = stamp_data.get("sha256") == file_hash(cache)
         except (OSError, ValueError):
             pass
     if cache_valid:
         frame = pd.read_parquet(cache)
+        frame.attrs["axis_kind"] = stamp_data.get("axis_kind", "recorded_cycle")
         return frame
-    file = pq.ParquetFile(row["path"])
-    if "cycle" not in file.schema_arrow.names:
-        return pd.DataFrame(columns=["cycle"] + [item["column"] for item in METRICS])
     native = row["format"] == "native_cyc"
     vcol, qcol, tcol = ("voltage_native", "capacity_native", "total_time_s") if native else ("voltage_v", "capacity_ah", "time_s")
-    cols = [name for name in ("cycle", vcol, qcol, tcol) if name in file.schema_arrow.names]
+    wanted = (["cycle"] if labelled else []) + [vcol, qcol, tcol]
+    cols = [name for name in wanted if name in file.schema_arrow.names]
     stats = {}
+    start_rows = derived_frame["start_row"].to_numpy(dtype=np.int64) if use_derived else None
+    cycle_derived_values = derived_frame["cycle_derived"].to_numpy(dtype=np.int64) if use_derived else None
+    row_offset = 0
     for batch in file.iter_batches(batch_size=65536, columns=cols):
         data = batch.to_pandas()
+        n = len(data)
+        if use_derived:
+            # Map each 0-based row index to the DERIVED cycle covering it
+            # (never touches/overwrites the source Parquet's own column).
+            indices = np.arange(row_offset, row_offset + n, dtype=np.int64)
+            segment = np.searchsorted(start_rows, indices, side="right") - 1
+            segment = np.clip(segment, 0, len(cycle_derived_values) - 1)
+            data = data.copy()
+            data["cycle"] = cycle_derived_values[segment]
+        row_offset += n
         for cycle, group in data.groupby("cycle", dropna=True, sort=False):
             if not math.isfinite(float(cycle)) or float(cycle) % 1:
                 continue
@@ -90,7 +180,9 @@ def profile_metrics(project, row):
     temporary = cache.with_suffix(".tmp")
     frame.to_parquet(temporary, index=False, compression="zstd", compression_level=19)
     temporary.replace(cache)
-    atomic_json(stamp, {"sha256": file_hash(cache), "source_sha256": row["sha256"]})
+    axis_kind = "derived_cycle" if use_derived else "recorded_cycle"
+    atomic_json(stamp, {"sha256": file_hash(cache), "source_sha256": row["sha256"], "axis_kind": axis_kind})
+    frame.attrs["axis_kind"] = axis_kind
     return frame
 
 
@@ -118,6 +210,7 @@ def build_library_bundle(config_path, output):
     specs = {item["metric_id"]: dict(item) for item in METRICS}
     invalid_links = {link["dataset_id"] for link in validate_links(project) if not link["valid"]}
     registry_hash = file_hash(project / "library.sqlite3")
+    axis_kinds_seen = set()
     for source in library_rows(project):
         get_dataset(project, source["dataset_id"])
         if source["dataset_id"] in invalid_links:
@@ -134,9 +227,13 @@ def build_library_bundle(config_path, output):
             "cell_identity_status": "mapped_physical_alias" if physical else "provisional_source_identity",
             "label": meta.get("sample_name") or source["relative_path"], "cohort": cohort, "test_type": test,
             "protocol": meta.get("protocol"), "chemistry": meta.get("chemistry"), "temperature_c": meta.get("temperature_c"),
-            "include": meta.get("include") is not False, "axis_kind": "recorded_cycle", "axis_label": "기록 cycle · 수명 매핑 미확정"}
+            "include": meta.get("include") is not False, "axis_kind": "recorded_cycle", "axis_label": AXIS_LABELS["recorded_cycle"]}
         rows.append(row)
-        frame = profile_metrics(project, source)
+        frame = profile_metrics(project, source, verified=True)
+        axis_kind = frame.attrs.get("axis_kind", "recorded_cycle")
+        axis_kinds_seen.add(axis_kind)
+        if axis_kind == "derived_cycle":
+            row.update(axis_kind="derived_cycle", axis_label=AXIS_LABELS["derived_cycle"])
         for item in frame.to_dict("records"):
             for spec in METRICS:
                 value = item[spec["column"]]
@@ -178,13 +275,14 @@ def build_library_bundle(config_path, output):
     indices = [item["life_index"] for item in observations]
     lo, hi = (min(indices), max(indices)) if indices else (0, 1)
     config["comparison"].update(life_min=lo, life_max=hi, summary="snapshot" if lo == hi else "median", min_points=1 if lo == hi else 2)
+    bundle_axis_kind = next(iter(axis_kinds_seen)) if len(axis_kinds_seen) == 1 else "mixed" if axis_kinds_seen else "recorded_cycle"
     # Curves and profile metrics have their own source references. No fabricated
     # legacy run, current trace, CC/CV mode or lifetime mapping is created.
     payload = {"schema_version": "library_workbench_v1", "ingestion": {"records": []}, "issues": issues}
     bundle = build_workbench_bundle(output, config, rows, payload, observation_records=json_safe(observations))
     bundle.update(source_mode="parquet_library", evidence_references=references, library_project=str(project),
-        registry_hash=registry_hash, axis_kind="recorded_cycle",
-        axis_label="기록 cycle · RPT 내부/수명 cycle 매핑 미확정", axis_by_cohort=[],
+        registry_hash=registry_hash, axis_kind=bundle_axis_kind,
+        axis_label=AXIS_LABELS.get(bundle_axis_kind, AXIS_LABELS["recorded_cycle"]), axis_by_cohort=[],
         capabilities={"registration": False, "registration_reason": "실험 정보는 BatteryInsight 통합 화면의 Parquet 분류 탭에서 수정하세요."})
     bundle["issues"] += issues
     if file_hash(project / "library.sqlite3") != registry_hash:
@@ -205,7 +303,7 @@ def library_evidence(reference, cycle=None):
         raise ValueError("화면 생성 후 원본이 변경됐습니다. 새로고침하세요.")
     if reference.get("metadata_binding") and metadata_binding(row) != reference["metadata_binding"]:
         raise ValueError("화면 생성 후 실험 정보·단위가 변경됐습니다. 비교 작업실을 새로고침하세요.")
-    frame = profile_metrics(project, row)
+    frame = profile_metrics(project, row, verified=True)
     cycles = frame["cycle"].tolist()
     if cycle is None:
         cycle = cycles[0] if cycles else None
@@ -254,7 +352,9 @@ def library_evidence(reference, cycle=None):
         "cycles_table": frame.to_dict("records"), "pulses": [], "quality": [], "diagnostics": profile_review(frame), "external_features": [], "life_summary": [],
         "warnings": [{"reason": "native_units_unconfirmed"}] if vf is None or qf is None else [],
         "available_signals": ["step_time_s", "voltage_native", "capacity_native"], "unavailable_signals": ["current_a", "mode"],
-        "source_hash": row["sha256"], "run_path": str(project), "axis_kind": "recorded_cycle", "axis_label": "기록 cycle",
+        "source_hash": row["sha256"], "run_path": str(project),
+        "axis_kind": frame.attrs.get("axis_kind", "recorded_cycle"),
+        "axis_label": AXIS_LABELS.get(frame.attrs.get("axis_kind", "recorded_cycle"), AXIS_LABELS["recorded_cycle"]),
         "native_view": native and (vf is None or qf is None),
         "raw_modified": False, "provenance_scope": "Read-only verified Parquet; display sampling does not alter stored records"})
 

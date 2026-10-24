@@ -48,8 +48,6 @@ htmlcov/
 *.pdf
 
 # Versioned metric definitions, blank templates, and synthetic examples
-!/catalog/**/*.csv
-!/catalog/**/*.parquet
 !/battery_insight/resources/catalog/**/*.csv
 !/battery_insight/resources/catalog/**/*.parquet
 !/examples/**/*.csv

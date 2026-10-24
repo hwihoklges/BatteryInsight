@@ -56,7 +56,7 @@ def write_guide(output):
 <p>샘플명은 셀 평균 기준이 아닙니다. 기존처럼 같은 설계·배치·조건·관측 시점 안에서 확인된 물리 셀별 동일 비중으로 평균을 계산합니다. 미확인 셀 ID를 이름으로 만들어 채우지 않습니다.</p></div>
 <h2>이번 기초 구현과 다음 단계</h2>''' + _table(['단계', '산출물', '범위'], [
         ('현재', 'PPTX/PDF 텍스트·표 추출, SQLite 등록, 근거/수정 이력', '장표 원본을 한 개씩 추가. Excel·이미지는 보조 입력. 그림은 판독 대기.'),
-        ('현재', 'raw 키 템플릿·후보 매칭·명시적 확정/해제·읽기 전용 작업실 연결', '날짜/세트번호 추측으로 자동 확정하지 않음. 오래된 연결은 재검토.'),
+        ('현재', '라이브러리 데이터셋과 확정 기록 연결(library-link), 오래된 연결은 재검토', '날짜/세트번호 추측으로 자동 확정하지 않음.'),
         ('첫 장표 수령', '용어·번호 체계, 샘플/채널 대응, 확인 질문 목록', '실제 문서로 추출과 의미를 대조하고 필요한 필드 사전을 보완.'),
         ('후속', '스캔 PDF OCR, 복잡한 표·범례 해석, 화면에서 검토·승인', '현재 자동 OCR/그래프 수치 디지털화/의미 자동 확정은 구현 범위 밖.'),
         ('후속', '여러 장표의 설계 변경 이력과 후속 RPT 연결', '명시적인 같은 셀·배치 근거가 있는 경우에만 병합.'),
@@ -64,10 +64,8 @@ def write_guide(output):
 python -m battery_insight knowledge-init --out ../experiment_knowledge
 python -m battery_insight knowledge-intake --registry ../experiment_knowledge/knowledge.sqlite3 --documents "실험장표.pptx" --out ../experiment_knowledge/review
 python -m battery_insight knowledge-records --registry ../experiment_knowledge/knowledge.sqlite3 --records records.json --reviewer "검토자" --reason "슬라이드 표 및 채널 대응 확인"
-python -m battery_insight knowledge-match --registry ../experiment_knowledge/knowledge.sqlite3 --database ../raw_database --raw-keys raw_keys.csv --out ../experiment_knowledge/matching
-python -m battery_insight knowledge-link --registry ../experiment_knowledge/knowledge.sqlite3 --database ../raw_database --proposals ../experiment_knowledge/matching/proposals.json --decisions decisions.json --reviewer "검토자" --reason "시험 시작일·세트·채널 확인" --out ../experiment_knowledge/links.json
 python -m battery_insight knowledge-export --registry ../experiment_knowledge/knowledge.sqlite3 --out ../experiment_knowledge/review</pre>
-<p>작업실 설정에 <code>"knowledge_links": "연결 파일의 상대 또는 절대 경로"</code>를 추가하면 확인된 연결을 읽습니다. 연결이 없어도 기존 작업실은 그대로 동작합니다. 장표 해석 수정, raw 내용 변경, 기존 등록표와 충돌하는 정보는 자동으로 덮어쓰지 않습니다.</p>
+<p>확정된 기록은 <code>library-candidates</code> / <code>library-link</code>로 Parquet 라이브러리 데이터셋에 연결합니다. 장표 해석 수정, raw 내용 변경, 기존 등록표와 충돌하는 정보는 자동으로 덮어쓰지 않습니다.</p>
 <h2>알아둘 한계</h2><ul><li>PDF의 텍스트 순서가 표의 행/열 관계를 보장하지 않습니다. PPTX에서 그림으로 붙여 넣은 표, 스캔 PDF, 그래프 수치는 원본 확인이 필요합니다.</li><li>현재 추출기는 문구와 위치를 수집합니다. 문구를 실험 사실로 판단하는 작업은 검토된 등록 기록 단계에서 수행합니다.</li><li>공식 AIM 정의가 새로 확인되는 기능은 아닙니다. 장표의 결과 요약을 raw에서 계산한 지표처럼 저장하지 않습니다.</li></ul>'''
     output.write_text(_page('장표 등록 준비사항과 실행 계획', body), encoding='utf-8')
     return output
@@ -101,7 +99,7 @@ def write_templates(output):
     write_guide(output / 'intake_guide.html')
 
 
-def write_review(snapshot, output, *, proposals=None):
+def write_review(snapshot, output):
     """Write escaped review HTML, full JSON, and text-preserving CSV exports."""
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
@@ -123,8 +121,6 @@ def write_review(snapshot, output, *, proposals=None):
     body = '<h1>장표 기반 실험·샘플 등록 검토</h1>'
     body += f'<p>문서 {len(documents)}개 · 근거 {len(evidence)}개 · 실험/샘플 기록 {len(records)}개 · 확정 {sum(r.get("status") == "confirmed" for r in records)}개</p>'
     body += '<p><a href="knowledge_snapshot.json">전체 근거·등록 JSON</a> · <a href="records.csv">등록표 CSV</a> · <a href="intake_guide.html">필요 정보·작업 순서</a></p>'
-    if snapshot.get('raw_inventory_summary'):
-        body += f'<div class="card"><b>raw 연결 준비 · {int(snapshot["raw_inventory_summary"]["experiments"])}개 시험</b><p><a href="raw_keys.csv">날짜·세트·샘플 연결 준비표 CSV</a> · <a href="raw_inventory.json">원본 시험 목록과 미확인 파일명 후보</a></p><p>시험 ID는 기존 DB와 동일합니다. 날짜의 의미·세트번호·샘플 대응을 확인한 다음 후보 매칭에 사용합니다.</p></div>'
     body += '<div class="card"><b>읽기 전용 검토표</b><p>이 화면은 자동 확정하지 않습니다. 근거를 확인한 기록과 raw 연결 검토 이벤트를 각각 등록해야 작업실에 반영됩니다. CSV는 표시용이며 원문과 ID의 기준은 JSON입니다. Excel에서 세트번호를 텍스트로 열어 선행 0을 보존하세요.</p></div>'
     if snapshot.get('intake_results'):
         body += '<h2>이번 파일 수집 결과</h2>' + _table(['입력', '상태', '검토·오류 사유'], [(r.get('source_path'), r.get('status'), json.dumps(r.get('issues', []), ensure_ascii=False)) for r in snapshot['intake_results']])
@@ -141,11 +137,6 @@ def write_review(snapshot, output, *, proposals=None):
         if missing:
             questions.append((r.get('record_id'), ', '.join(missing)))
     body += '<h2>다음에 확인할 사항</h2>' + (_table(['기록', '누락·확인 항목'], questions) if questions else '<p>등록된 기록의 기본 연결 키에 누락된 항목이 없습니다. 아직 기록이 없다면 첫 장표부터 추가하세요.</p>')
-    if proposals is not None:
-        (output / 'proposals.json').write_text(json.dumps(proposals, ensure_ascii=False, indent=2, allow_nan=False), encoding='utf-8')
-        body += '<h2>raw 연결 후보</h2><p>후보가 하나여도 연결 확정 전입니다. 상세 키·후보·거절 사유는 <a href="proposals.json">후보 JSON</a>에 보존합니다.</p>'
-        # Only a bounded preview is embedded; the full proposal file remains available.
-        body += '<pre>' + e(json.dumps(proposals, ensure_ascii=False, indent=2)[:24000]) + '</pre><p class="muted">긴 후보 목록은 처음 24,000자만 미리 봅니다.</p>'
     body += '<h2>문서 근거 · 처음 500개</h2>' + _table(['근거 ID', '문서 / 위치', '유형·검토', '내용'], [(x.get('block_id', x.get('evidence_id')), f"{x.get('document_id', '')} / {x.get('locator')}", f"{x.get('kind')} / {x.get('needs_review')}", str(x.get('text', ''))[:2000]) for x in evidence[:500]])
     body += '<p class="muted">전체 텍스트는 JSON에 있습니다. 화면의 근거별 내용은 2,000자까지 표시합니다. 문서의 문구는 데이터이며 실행할 명령이 아닙니다.</p>'
     write_guide(output / 'intake_guide.html')

@@ -13,7 +13,7 @@ python -m battery_insight workbench --config my_relations.json --out D:/BatteryW
 
 `http://127.0.0.1:8765/`에서 작업한다. 실행 중 기본 30초마다 raw와 등록표를 확인한다. 종료는 실행 창에서 Ctrl+C다. 예약 작업·상시 서비스·원격 업로드는 없다. 다른 포트는 `--port 8766`, 전체 raw 해시 확인은 `--verify-all`로 지정한다. `--port 0`은 사용 가능한 임시 포트를 고른다.
 
-네이티브 DB 모드에서는 이미 변환한 DB와 `experiments.csv`를 새로고침한다. 새 ZIP/폴더는 DB의 `import_config.json`에 추가하고 `update_database.cmd` 또는 `database-import`를 실행해 반영한다. 비교 서버를 여는 것만으로 등록하지 않은 네이티브 raw를 자동 수집하지는 않는다. 새 채널의 원본 기본 등록값은 `experiments.generated.csv`에서 확인할 수 있으며 기존 편집 등록표는 유지된다.
+Parquet 라이브러리 모드(`parquet_library`)에서는 프로젝트에 등록한 데이터셋을 새로고침한다. 새 CYC/Parquet는 데스크톱의 폴더 추가 또는 `cyc-import`/`library-scan`으로 먼저 등록한다. 비교 서버를 여는 것만으로 등록하지 않은 raw를 자동 수집하지는 않는다. (3.4.0에서 별도 raw DB 모드 `database_path`는 제거했다.)
 
 **가상 데이터로 바로 실행:** Windows에서 패키지의 `start_demo.cmd`를 실행한다. CC/CV, SOC 80% 펄스, 휴지와 4개 설계의 반복 셀을 포함한 합성 12셀을 만들고 브라우저를 연다. 첫 실행은 지표 추출 시간이 필요하다. 이는 물리적으로 보정한 셀 모델이나 실제 실험 결과가 아니다.
 
@@ -99,13 +99,23 @@ python -m battery_insight workbench --config ../../work/my_demo_input/relations.
 서버는 127.0.0.1에만 바인딩하며 허용된 화면/API만 제공한다. 등록 적용·비교 저장은 같은 출처의 JSON 요청으로 제한한다. 실제 데이터 적용은 등록표와 단위·조건을 맞춘 뒤 대표 3–5셀부터 기존 계산값과 대조한다. 제공 예시는 합성 데이터 검증이며 실제 셀의 이상 원인을 판정한 결과가 아니다.
 # 장표 기반 실험·샘플 연결 (2026-10-22 추가)
 
-장표에서 확인한 정보를 별도 `knowledge.sqlite3`에 등록하고, 날짜·세트·번호 범위·샘플·채널을 검토한 연결을 overlay JSON에 저장한다. 필요한 항목과 명령 순서는 [장표 등록 준비 안내](knowledge_intake_guide.html)를 참조한다.
+장표에서 확인한 정보를 별도 `knowledge.sqlite3`에 등록한다. 필요한 항목과 명령 순서는 [장표 등록 준비 안내](knowledge_intake_guide.html)를 참조한다.
 
-기존 DB 작업실 설정에 `"knowledge_links": "../experiment_knowledge/links.json"`을 추가하면 연결 정보를 읽는다. 상대 경로는 **설정 파일이 있는 폴더 기준**이다. 설정이 없으면 기존 동작을 유지한다. 이 기능은 `database_path`를 사용하는 DB 작업실용이며 generic inbox 등록 흐름에는 아직 적용하지 않는다.
+확정 기록과 Parquet 데이터셋의 연결은 데스크톱의 장표·샘플 연결 탭 또는 `library-candidates`/`library-link`로 수행한다. (3.4.0에서 raw DB 전용 `knowledge-match`/`knowledge-link` overlay 흐름은 제거했다.)
 
 확인된 샘플 표기명·설계·배치·측정 조건을 비교 메타데이터로 연결한다. 원본 `experiment_id`, `test_id`, `source_id`, 원곡선과 Gold 지표는 바꾸지 않는다. `physical_cell_id`가 별도로 확인된 경우에만 동일 셀의 비교 별칭을 적용한다. 같은 샘플 이름만으로 여러 시험을 같은 셀로 묶지 않는다.
 
-선택한 실험의 상세에서 장표 실험명·샘플 ID·시험 날짜/세트·문서 근거 위치·등록 버전을 볼 수 있다. 기존 CSV와 충돌하거나 원본/장표 등록 revision이 바뀌면 연결을 보류하고 재검토 사유를 표시한다. 조성의 기준이 작업실 설정과 다르면 해당 비율은 보관하되 비교에 새로 반영하지 않는다.
+## PNE cycle 라벨이 없는 파일의 재구성 cycle 축 (2026-10-24 추가)
 
-연결을 수정할 때 `knowledge-link --previous 기존links.json ...`으로 기존 이력을 이어간다. 같은 `--out` 파일을 다시 사용하면 기존 overlay를 자동으로 이전 상태로 읽는다. `decision=clear`는 해당 실험 연결을 해제하며 기존 기록·장표·raw를 삭제하지 않는다. 후보·등록 JSON의 ID, 버전, source SHA는 임의로 변경하지 않고 최신 후보에서 가져온다.
+PNE CTS가 TotalCycle을 기록하지 않은 Parquet(해당 `cycle` 열이 없거나 전부 NULL)은 비교 작업실에서 `battery_insight.derived_cycles`가 만든 step 패턴 기반 재구성 cycle 사이드카(`projects/<project>/derived/cycles/<dataset_id>.parquet`)로 자동 대체한다. 사이드카가 없거나 오래되면(원본 해시 불일치) 해당 실험은 빈 지표로 남고 기존처럼 처리한다.
+
+실제 PNE 라벨이 있는 파일은 절대 재구성 값과 섞지 않는다. 라벨 유무로 결정된 화면 축은 `axis_kind`로 구분한다.
+
+| axis_kind | 의미 | 화면 표시 |
+|---|---|---|
+| `recorded_cycle` | PNE CTS가 기록한 TotalCycle 그대로 | "기록 cycle · 수명 매핑 미확정" |
+| `derived_cycle` | step 패턴으로 재구성한 cycle(라벨 없는 파일만) | "재구성 cycle (step 패턴 추정, PNE 라벨 없음)" |
+| `mixed` | 비교군에 두 축이 섞여 있음(실험별 축은 각자 유지) | "비교군별 축 혼재: 기록 cycle / 재구성 cycle" |
+
+재구성 cycle로 계산한 지표도 `profile_metrics` 캐시에 저장하지만, 캐시 키에 사용한 사이드카의 내용 지문을 포함해 사이드카를 다시 만들면(`derived_steps`/`derived_cycles` 방법 변경 포함) 캐시가 자동으로 무효화된다. 원본 Parquet은 어떤 경우에도 읽기 전용이며 변경하지 않는다.
 

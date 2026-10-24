@@ -64,6 +64,29 @@ def test_source_revision_requires_review(project):
     assert not updated["metadata_current"]
 
 
+def test_verification_uses_stamp_and_detects_same_size_edit(project, monkeypatch):
+    import os
+    row = library.library_rows(project)[0]
+    assert row["stamp"] == library.file_stamp(row["path"])
+    calls = []
+    original = library.file_hash
+    monkeypatch.setattr(library, "file_hash", lambda path: calls.append(path) or original(path))
+    root = Path(row["path"])
+    while root.name != "parquet":
+        root = root.parent
+    library.get_dataset(project, row["dataset_id"])
+    library.scan_folder(project, root)
+    assert calls == []
+    library.get_dataset(project, row["dataset_id"], verify="strict")
+    assert len(calls) == 1
+    data = bytearray(Path(row["path"]).read_bytes())
+    data[len(data) // 2] ^= 0xFF
+    Path(row["path"]).write_bytes(bytes(data))
+    os.utime(row["path"], ns=(row["stamp"][1], row["stamp"][1] + 10_000_000))
+    with pytest.raises(ValueError, match="변경"):
+        library.get_dataset(project, row["dataset_id"])
+
+
 def test_rules_conflicts_do_not_override_reviewed_metadata(project):
     row = library.library_rows(project)[0]
     library.assign_metadata(project, row["dataset_id"], {"test_type": "RPT"})
