@@ -14,7 +14,7 @@ from . import __version__
 COMMANDS = {"desktop", "cyc-import", "library-scan", "library-export", "library-assign", "library-rules",
             "library-open", "library-documents", "library-candidates", "library-link", "library-features", "self-test", "check-gui", "version",
             "trace-extract", "trace-import", "trace-review", "trace-report", "trace-export", "trace-demo",
-            "copilot-check", "copilot-prepare", "copilot-run", "copilot-import", "db-build", "network"}
+            "copilot-check", "copilot-prepare", "copilot-run", "copilot-import", "db-build", "network", "slide-link"}
 
 
 class Parser(argparse.ArgumentParser):
@@ -114,6 +114,8 @@ def main(argv=None):
             parser.add_argument("--workers", type=int, default=8)
             parser.add_argument("--no-network", action="store_true")
             parser.add_argument("--force", action="store_true")
+            parser.add_argument("--slides", type=Path)
+            parser.add_argument("--profile-every", type=int, default=10)
             args = parser.parse_args(cleaned)
             from . import library
             if args.command in {"self-test", "check-gui", "version", "desktop"}:
@@ -214,7 +216,19 @@ def main(argv=None):
                 elif args.command == "db-build":
                     from .db_build import build_database
                     result = build_database(args.project, workers=args.workers, network=not args.no_network, force=args.force,
+                                            profile_every=args.profile_every,
                                             progress=lambda message: print(message, file=sys.stderr) if sys.stderr else None)
+                elif args.command == "slide-link":
+                    from .slide_link import build_slide_link
+                    if not args.slides:
+                        raise ValueError("--slides <장표 폴더>가 필요합니다")
+                    full = build_slide_link(args.project, args.slides, workers=args.workers,
+                                            log=lambda message: print(message, file=sys.stderr) if sys.stderr else None)
+                    result = {"output": str(Path(full["out"]) / "slide_link_report.xlsx"), "decks": full["decks"],
+                              "slides": full["slides"], "matched_tests": len(full["matched"]),
+                              "tests_without_slides": len(full["tests_without_slides"]),
+                              "slides_without_data": len(full["slides_without_data"]),
+                              "seconds": round(full["seconds"], 1)}
                 elif args.command == "network":
                     from .design_network import build_network
                     output = Path(build_network(args.project))

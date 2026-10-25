@@ -50,7 +50,9 @@ STEP_OUT_COLUMNS = ["step_derived", "start_row", "n_points", "cycle_derived",
 SUMMARY_COLUMNS = ["cycle_derived", "start_step", "n_steps", "start_elapsed_s",
                    "charge_capacity_ah", "discharge_capacity_ah", "coulombic_efficiency",
                    "charge_duration_s", "discharge_duration_s", "mean_discharge_voltage_v",
-                   "max_voltage_v", "min_voltage_v", "has_pulses"]
+                   "max_voltage_v", "min_voltage_v", "has_pulses", "is_full"]
+# Bump when SUMMARY_COLUMNS change so reused summary rows are recomputed.
+SUMMARY_VERSION = "2"
 VOLTAGE_FACTORS = {"V": 1., "mV": 1e-3}
 CAPACITY_FACTORS = {"Ah": 1., "mAh": 1e-3, "uAh": 1e-6}
 
@@ -166,6 +168,7 @@ def cycle_summary(steps_with_cycles: pd.DataFrame, voltage_factor=0.001,
             mean_dv = np.nan
         vmax = g["v_max"].to_numpy(dtype=float)
         vmin = g["v_min"].to_numpy(dtype=float)
+        has_pulses = bool(np.isin(role, ("pulse_chg", "pulse_dchg")).any())
         rows.append({
             "cycle_derived": int(cyc),
             "start_step": int(g["step_derived"].iloc[0]),
@@ -179,7 +182,8 @@ def cycle_summary(steps_with_cycles: pd.DataFrame, voltage_factor=0.001,
             "mean_discharge_voltage_v": mean_dv * voltage_factor if np.isfinite(mean_dv) else np.nan,
             "max_voltage_v": (float(np.nanmax(vmax)) * voltage_factor) if np.isfinite(vmax).any() else np.nan,
             "min_voltage_v": (float(np.nanmin(vmin)) * voltage_factor) if np.isfinite(vmin).any() else np.nan,
-            "has_pulses": bool(np.isin(role, ("pulse_chg", "pulse_dchg")).any()),
+            "has_pulses": has_pulses,
+            "is_full": bool(full_d.any() and (role == "full_chg").any() and not has_pulses),
         })
     return pd.DataFrame(rows, columns=SUMMARY_COLUMNS)
 
@@ -216,26 +220,15 @@ def cycles_summary_path(project):
     return Path(project) / "derived" / "cycles_summary.parquet"
 
 
-def _step_sidecar_meta(path):
-    import pyarrow.parquet as pq
-    meta = pq.read_schema(path).metadata or {}
-    return {k.decode(): v.decode() for k, v in meta.items()}
+def is_current(out, sha256, index=None):
+    meta = index.meta(out) if index is not None else (
+        derived_steps.read_meta(out) if Path(out).exists() else None)
+    return (bool(meta) and meta.get("source_sha256") == sha256
+            and meta.get("cycle_method") == CYCLE_METHOD
+            and meta.get("step_method") == derived_steps.STEP_METHOD)
 
 
-def is_current(out, sha256):
-    import pyarrow.parquet as pq
-    if not out.exists():
-        return False
-    try:
-        meta = pq.read_schema(out).metadata or {}
-    except Exception:
-        return False
-    return (meta.get(b"source_sha256", b"").decode() == sha256
-            and meta.get(b"cycle_method", b"").decode() == CYCLE_METHOD
-            and meta.get(b"step_method", b"").decode() == derived_steps.STEP_METHOD)
-
-
-def _build_one(step_path, out, dataset_id, sha256, write, factors=(1e-3, 1e-6)):
+def _build_one(step_path, out, dataset_id, sha256, write, factors=(1e-3, 1e-6), step_meta=None):
     """Compute cycles for one file; write the per-file sidecar when ``write``.
 
     Returns the per-cycle ``summary`` (with a ``dataset_id`` column) for the
@@ -243,7 +236,7 @@ def _build_one(step_path, out, dataset_id, sha256, write, factors=(1e-3, 1e-6)):
     """
     import pyarrow as pa
     import pyarrow.parquet as pq
-    meta = _step_sidecar_meta(step_path)
+    meta = step_meta if step_meta is not None else (derived_steps.read_meta(step_path) or {})
     if meta.get("method") != derived_steps.STEP_METHOD or meta.get("source_sha256") != sha256:
         return {"dataset_id": dataset_id, "status": "step_sidecar_stale", "summary": None}
     steps = pd.read_parquet(step_path)
@@ -279,7 +272,8 @@ def _existing_summary(project):
         table = pq.read_table(path)
         meta = table.schema.metadata or {}
         if (meta.get(b"cycle_method", b"").decode() != CYCLE_METHOD
-                or meta.get(b"step_method", b"").decode() != derived_steps.STEP_METHOD):
+                or meta.get(b"step_method", b"").decode() != derived_steps.STEP_METHOD
+                or meta.get(b"summary_version", b"").decode() != SUMMARY_VERSION):
             return {}, {}
         keys = json.loads(meta.get(b"dataset_keys", b"{}").decode())
         frame = table.to_pandas()
@@ -300,6 +294,8 @@ def build_cycle_tables(project, *, workers=4, limit=None, progress=print):
     if limit:
         rows = rows[:limit]
     previous, previous_keys = _existing_summary(project)
+    step_index = derived_steps.SidecarIndex(project / "derived" / "steps")
+    cycle_index = derived_steps.SidecarIndex(project / "derived" / "cycles")
     jobs, results, summaries, keys = [], [], [], {}
     for row in rows:
         dataset_id = row["dataset_id"]
@@ -307,10 +303,10 @@ def build_cycle_tables(project, *, workers=4, limit=None, progress=print):
         step_path = derived_steps.sidecar_path(project, dataset_id)
         factors = unit_factors(row)
         key = f"{row['sha256']}|{factors[0]}|{factors[1]}"
-        if not step_path.exists():
+        if step_path.name not in step_index.listing:
             results.append({"dataset_id": dataset_id, "status": "no_step_sidecar"})
             continue
-        write = not is_current(out, row["sha256"])
+        write = not is_current(out, row["sha256"], cycle_index)
         if not write and previous_keys.get(dataset_id) == key and dataset_id in previous:
             summaries.append(previous[dataset_id])
             keys[dataset_id] = key
@@ -320,8 +316,10 @@ def build_cycle_tables(project, *, workers=4, limit=None, progress=print):
             results.append({"dataset_id": dataset_id, "status": "current_units_unconfirmed"})
             keys[dataset_id] = key
             continue
-        jobs.append((step_path, out, dataset_id, row["sha256"], write, factors))
+        jobs.append((step_path, out, dataset_id, row["sha256"], write, factors, step_index.meta(step_path)))
         keys[dataset_id] = key
+    step_index.save()
+    cycle_index.save()
 
     if jobs:
         with ProcessPoolExecutor(max_workers=workers) as pool:
@@ -338,6 +336,7 @@ def build_cycle_tables(project, *, workers=4, limit=None, progress=print):
                     results.append({"dataset_id": futures[future][2], "status": "failed", "error": str(error)})
                 if progress and (i % 100 == 0 or i == len(jobs)):
                     progress(f"cycles {i}/{len(jobs)}")
+        derived_steps.refresh_index(project / "derived" / "cycles", [job[1] for job in jobs if job[4]])
 
     (project / "derived").mkdir(parents=True, exist_ok=True)
     if jobs or set(keys) != set(previous_keys):
@@ -347,7 +346,7 @@ def build_cycle_tables(project, *, workers=4, limit=None, progress=print):
         arrow = pa.Table.from_pandas(combined, preserve_index=False)
         arrow = arrow.replace_schema_metadata(
             {"step_method": derived_steps.STEP_METHOD, "cycle_method": CYCLE_METHOD,
-             "dataset_keys": json.dumps(keys, sort_keys=True)})
+             "summary_version": SUMMARY_VERSION, "dataset_keys": json.dumps(keys, sort_keys=True)})
         target = cycles_summary_path(project)
         tmp = target.with_suffix(".tmp")
         pq.write_table(arrow, tmp, compression="zstd")

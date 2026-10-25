@@ -501,33 +501,23 @@ def _aggregate(observations, runs, cells):
     if obs.empty:
         return [], []
 
-    cell_rows = []
     gcols = ["cell_id", "cohort_key", "metric_id", "window"]
-    for keys, grp in obs.groupby(gcols, dropna=False):
-        cid, ck, mid, win = keys
-        cell_rows.append({
-            "cell_id": cid, "cohort_key": ck, "metric_id": mid, "window": win,
-            "value": float(np.median(grp["value"])), "n_runs": int(grp["run_id"].nunique()),
-        })
-    cell_df = pd.DataFrame(cell_rows)
+    cell_df = (obs.groupby(gcols, dropna=False)
+               .agg(value=("value", "median"), n_runs=("run_id", "nunique")).reset_index())
+    cell_df["value"] = cell_df["value"].astype(float)
+    cell_df["n_runs"] = cell_df["n_runs"].astype(int)
+    cell_rows = cell_df.to_dict("records")
 
     cell_design = {c["cell_id"]: c["design_id"] for c in cells.values()}
     cell_df["design_id"] = cell_df["cell_id"].map(cell_design)
 
-    design_rows = []
     gcols = ["design_id", "cohort_key", "metric_id", "window"]
-    for keys, grp in cell_df.groupby(gcols, dropna=False):
-        did, ck, mid, win = keys
-        vals = grp["value"].to_numpy(dtype=float)
-        n = len(vals)
-        design_rows.append({
-            "design_id": did, "cohort_key": ck, "metric_id": mid, "window": win,
-            "n_cells": n, "mean": float(np.mean(vals)),
-            "sd": float(np.std(vals, ddof=1)) if n >= 2 else None,
-            "median": float(np.median(vals)), "min": float(np.min(vals)),
-            "max": float(np.max(vals)),
-        })
-    return cell_rows, design_rows
+    design_df = (cell_df.groupby(gcols, dropna=False)["value"]
+                 .agg(n_cells="size", mean="mean", sd="std", median="median", min="min", max="max")
+                 .reset_index())
+    design_df["n_cells"] = design_df["n_cells"].astype(int)
+    design_df["sd"] = design_df["sd"].astype(object).where(design_df["n_cells"] >= 2, None)
+    return cell_rows, design_df.to_dict("records")
 
 
 def _load_metric_defs():
@@ -649,16 +639,20 @@ def _fill_tables(conn, designs, cells, tests, runs, run_datasets, run_profile_df
 # --------------------------------------------------------------------------- #
 # side outputs
 # --------------------------------------------------------------------------- #
+# Large row-level tables stay in research.sqlite3 / db\*.parquet; the workbook keeps the browsable ones.
+XLSX_SKIP = {"observations", "cell_metrics", "run_datasets", "run_profile"}
+
+
 def _write_xlsx(sqlite_path, xlsx_path):
-    try:
-        import openpyxl  # noqa: F401
-    except Exception:
+    import importlib.util
+    engine = next((e for e in ("xlsxwriter", "openpyxl") if importlib.util.find_spec(e)), None)
+    if engine is None:
         return
     conn = sqlite3.connect(sqlite_path)
     try:
         names = [r[0] for r in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]
-        with pd.ExcelWriter(xlsx_path, engine="openpyxl") as writer:
+            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name") if r[0] not in XLSX_SKIP]
+        with pd.ExcelWriter(xlsx_path, engine=engine) as writer:
             for name in names:
                 df = pd.read_sql_query(f"SELECT * FROM {name} LIMIT 50000", conn)
                 df.to_excel(writer, sheet_name=name[:31], index=False)

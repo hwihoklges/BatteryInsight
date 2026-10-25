@@ -1,5 +1,18 @@
 # Battery Insight — 전기화학 데이터 정리·분석 코드
 
+## 3.5.x: 빌드 효율화, 사이클 V–Q 프로파일, 장표↔실험 연결
+
+```powershell
+python -m battery_insight db-build --project D:/BIProject --profile-every 10      # 0이면 프로파일 단계 끔
+python -m battery_insight slide-link --project D:/BIProject --slides "D:/2026/장표/2팀"
+```
+
+- **사이클 프로파일** `db/cycle_profiles.parquet`: 1·2·3 사이클, N(기본 10)번째마다, 첫/마지막 full 사이클, 방전시간이 중앙값의 1.5배 이상이거나 1/1.5배 이하인 특수 사이클(RPT 등)만 골라 충전·방전 V–Q 곡선을 128점(q/q_total 격자, float32, 0.1 mV)으로 저장합니다. 2,932 파일 → 89,385 곡선 21 MB(every=1이면 약 128 MB, 50이면 약 12 MB). 설계 간 곡선·dQ/dV 비교에 원본 4 GB를 열 필요가 없습니다(`cycle_profiles.load_profiles`, `dqdv`).
+- **원본 Parquet**(`sources/`, 3.98 GB, 6.4 B/행)은 무손실 보관본입니다. float32 재인코딩을 시험했지만 이미 zstd-19 + byte-stream-split이라 줄지 않았습니다(6.64 → 6.82 B/행). 더 줄이려면 원본을 별도 보관 위치로 옮기는 방법뿐이며, 지표·DB·프로파일은 `derived/`+`db/`(약 140 MB)만으로 동작합니다.
+- **빌드 효율**: 사이드카 메타데이터를 디렉터리별 `_index.json`에 캐시해 NAS에서 파일 2,932개의 footer를 매번 읽던 작업(약 25 s × 2단계)을 scandir 한 번(0.5 s)으로 줄였습니다. `cycles_summary`에 `is_full` 열을 넣어 run_metrics가 사이클 사이드카를 다시 읽지 않고, run 단위 계산은 병렬로 처리합니다(17 → 10 s). metric_validation은 라벨 없는 파일을 열지 않습니다. research_db는 집계를 벡터화하고 xlsx에서 큰 행 단위 표를 뺐습니다(16 → 8.7 s). 전체 재계산(`--force`)은 약 160 s에서 약 57 s로, 변경이 없으면 0.2 s입니다.
+- **수정**: metric_validation이 단위 계수 순서를 바꿔 쓰던 문제(용량이 mAh 값인데 Ah로 표기)를 고쳤습니다. 미사용 `derived_steps.load_all_steps`와 고아 파일 `derived/steps_all.parquet`(68.6 MB)를 지웠습니다.
+- **장표 연결** (`slides/slide_link_report.xlsx`): 장표 폴더의 pptx 슬라이드 XML만 읽어(미디어 제외) 슬라이드 색인을 캐시하고, 담당자·날짜·샘플/설계 토큰(IDF 가중)으로 실험 DB와 매칭합니다. 시트: 요약 / 담당자별 / 장표O_데이터X / 데이터O_장표X / 둘다(설계) / 링크후보. `matched`(높음)와 `candidate`(검토 필요)를 구분합니다. 담당자 별칭은 `slide_link.OWNER_ALIAS`에서 지정합니다.
+
 ## 3.5.0: 설계 비교 DB와 설계 거미줄
 
 서로 다른 설계의 전기화학 지표를 같은 시험 조건(코호트)끼리 비교하는 연구 DB와 오프라인 설계 네트워크를 만듭니다. 한 명령으로 파생 step/cycle → run 지표 → `db/research.sqlite3` → `db/network.html`을 순서대로 갱신하며, 입력이 바뀌지 않은 단계는 건너뜁니다(`db/build_state.json`). 계획과 진행 상황은 [ROADMAP.md](ROADMAP.md)에 있습니다.

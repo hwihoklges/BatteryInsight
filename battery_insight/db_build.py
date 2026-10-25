@@ -1,6 +1,6 @@
 """One-command, incremental build of the design comparison database.
 
-derived steps ??derived cycles ??run metrics ??research DB ??design network.
+derived steps -> derived cycles -> cycle profiles -> run metrics -> validation -> research DB -> design network.
 Each stage is skipped when its input fingerprint (file size/mtime of inputs and
 the stage's own source code) matches the previous successful build, so a
 no-change rebuild touches only a handful of files on the NAS.
@@ -33,7 +33,8 @@ def _fingerprint(inputs, modules):
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
 
-def build_database(project, *, workers=8, network=True, force=False, progress=print):
+def build_database(project, *, workers=8, network=True, force=False, profile_every=10, progress=print):
+    """``profile_every``: keep a resampled V–Q curve every N-th cycle (+special cycles); 0 disables."""
     from . import derived_cycles, derived_steps, research_db, run_metrics
     project = Path(project).resolve()
     db = project / "db"
@@ -54,17 +55,17 @@ def build_database(project, *, workers=8, network=True, force=False, progress=pr
         if state.get(name) == key and all(Path(p).exists() for p in outputs):
             stages[name] = {"seconds": round(time.perf_counter() - begin, 1), "result": "unchanged"}
             if progress:
-                progress(f"[{name}] 蹂寃??놁쓬")
+                progress(f"[{name}] 변경 없음")
             return
         if progress:
-            progress(f"[{name}] ?쒖옉")
+            progress(f"[{name}] 시작")
         value = function()
         # Fingerprint after the run so the stage's own outputs (e.g. sidecar dirs) are captured.
         state[name] = _fingerprint(inputs, modules)
         state_path.write_text(json.dumps(state, indent=1), encoding="utf-8")
         stages[name] = {"seconds": round(time.perf_counter() - begin, 1), "result": _brief(value)}
         if progress:
-            progress(f"[{name}] ?꾨즺 {stages[name]['seconds']} s")
+            progress(f"[{name}] 완료 {stages[name]['seconds']} s")
 
     steps_dir, cycles_dir = derived / "steps", derived / "cycles"
     summary = derived_cycles.cycles_summary_path(project)
@@ -73,8 +74,14 @@ def build_database(project, *, workers=8, network=True, force=False, progress=pr
           [library_db, steps_dir], [steps_dir], [derived_steps])
     stage("cycles", lambda: derived_cycles.build_cycle_tables(project, workers=workers, progress=progress),
           [library_db, steps_dir, cycles_dir, summary], [summary], [derived_steps, derived_cycles])
+    if profile_every:
+        from . import cycle_profiles
+        profiles = db / "cycle_profiles.parquet"
+        stage("profiles", lambda: cycle_profiles.build_cycle_profiles(project, every=profile_every, workers=workers,
+                                                                      progress=progress),
+              [library_db, summary, profiles, f"every={profile_every}"], [profiles], [cycle_profiles])  # setting is part of the key
     stage("run_metrics", lambda: run_metrics.build_run_metrics(project, workers=workers),
-          [library_db, summary, cycles_dir, dx / "dx_files.csv"], run_outputs, [run_metrics])
+          [library_db, summary, dx / "dx_files.csv"], run_outputs, [run_metrics])
     from . import metric_validation
     stage("validation", lambda: _validation_brief(metric_validation.validate_metrics(project, workers=workers)),
           [library_db, steps_dir], [db / "metric_validation.json"], [metric_validation, derived_cycles])
@@ -108,8 +115,10 @@ def main(argv=None):
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--no-network", action="store_true")
     parser.add_argument("--force", action="store_true", help="ignore the stage fingerprints and rebuild")
+    parser.add_argument("--profile-every", type=int, default=10, help="V-Q profile every N cycles (0 = off)")
     args = parser.parse_args(argv)
-    result = build_database(args.project, workers=args.workers, network=not args.no_network, force=args.force)
+    result = build_database(args.project, workers=args.workers, network=not args.no_network, force=args.force,
+                            profile_every=args.profile_every)
     print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
     return 0
 

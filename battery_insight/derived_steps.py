@@ -91,15 +91,82 @@ def _build_one(path, out, dataset_id, sha256):
     return {"dataset_id": dataset_id, "status": "built", "steps": len(frame), "rows": table.num_rows, **{f"n_{k}": int(v) for k, v in kinds.items()}}
 
 
-def is_current(out, sha256):
+class SidecarIndex:
+    """Cached schema metadata of every sidecar in one directory.
+
+    One ``os.scandir`` replaces thousands of per-file footer reads (≈9 ms each
+    on network drives); an entry is trusted only while the file's size and
+    mtime are unchanged, otherwise the footer is re-read.
+    """
+
+    NAME = "_index.json"
+
+    def __init__(self, directory):
+        import os
+        self.directory = Path(directory)
+        self.path = self.directory / self.NAME
+        self.dirty = False
+        try:
+            self.entries = json.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            self.entries = {}
+        try:
+            self.listing = {e.name: [e.stat().st_size, e.stat().st_mtime_ns]
+                            for e in os.scandir(self.directory) if e.name.endswith(".parquet")}
+        except OSError:
+            self.listing = {}
+
+    def meta(self, path):
+        """Cached :func:`read_meta`; ``None`` when the file is missing or unreadable."""
+        name = Path(path).name
+        stat = self.listing.get(name)
+        if stat is None:
+            return None
+        entry = self.entries.get(name)
+        if entry and entry[:2] == stat:
+            return entry[2]
+        meta = read_meta(path)
+        if meta is None:
+            return None
+        self.entries[name] = [*stat, meta]
+        self.dirty = True
+        return meta
+
+    def save(self):
+        stale = set(self.entries) - set(self.listing)
+        for name in stale:
+            del self.entries[name]
+        if self.dirty or stale:
+            self.directory.mkdir(parents=True, exist_ok=True)
+            tmp = self.path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(self.entries, separators=(",", ":")), encoding="utf-8")
+            tmp.replace(self.path)
+
+
+def read_meta(path):
+    """Decoded schema metadata plus ``_rows``/``_label_nulls`` (footer only); ``None`` when unreadable."""
     import pyarrow.parquet as pq
-    if not out.exists():
-        return False
     try:
-        meta = pq.read_schema(out).metadata or {}
+        file = pq.ParquetFile(path)
     except Exception:
-        return False
-    return meta.get(b"source_sha256", b"").decode() == sha256 and meta.get(b"method", b"").decode() == STEP_METHOD
+        return None
+    meta = {k.decode(): v.decode() for k, v in (file.schema_arrow.metadata or {}).items() if k != b"pandas"}
+    meta["_rows"] = file.metadata.num_rows
+    names = file.schema_arrow.names
+    if "label_cycle" in names:
+        col, nulls = names.index("label_cycle"), 0
+        for i in range(file.metadata.num_row_groups):
+            group = file.metadata.row_group(i)
+            stats = group.column(col).statistics
+            nulls += stats.null_count if stats is not None and stats.has_null_count else group.num_rows
+        meta["_label_nulls"] = nulls
+    return meta
+
+
+def is_current(out, sha256, index=None):
+    """``index`` (a :class:`SidecarIndex`) avoids per-file footer reads in batch loops."""
+    meta = index.meta(out) if index is not None else (read_meta(out) if Path(out).exists() else None)
+    return bool(meta) and meta.get("source_sha256") == sha256 and meta.get("method") == STEP_METHOD
 
 
 def build_step_tables(project, *, workers=4, limit=None, progress=print):
@@ -109,34 +176,36 @@ def build_step_tables(project, *, workers=4, limit=None, progress=print):
     if limit:
         rows = rows[:limit]
     todo, results = [], []
+    index = SidecarIndex(project / "derived" / "steps")
     for row in rows:
         out = sidecar_path(project, row["dataset_id"])
-        if is_current(out, row["sha256"]):
+        if is_current(out, row["sha256"], index):
             results.append({"dataset_id": row["dataset_id"], "status": "current"})
         else:
             todo.append((row["path"], out, row["dataset_id"], row["sha256"]))
-    with ProcessPoolExecutor(max_workers=workers) as pool:
-        futures = {pool.submit(_build_one, *job): job for job in todo}
-        for i, future in enumerate(as_completed(futures), 1):
-            try:
-                results.append(future.result())
-            except Exception as error:  # keep going; report per file
-                results.append({"dataset_id": futures[future][2], "status": "failed", "error": str(error)})
-            if progress and (i % 100 == 0 or i == len(todo)):
-                progress(f"steps {i}/{len(todo)}")
+    index.save()
+    if todo:
+        with ProcessPoolExecutor(max_workers=workers) as pool:
+            futures = {pool.submit(_build_one, *job): job for job in todo}
+            for i, future in enumerate(as_completed(futures), 1):
+                try:
+                    results.append(future.result())
+                except Exception as error:  # keep going; report per file
+                    results.append({"dataset_id": futures[future][2], "status": "failed", "error": str(error)})
+                if progress and (i % 100 == 0 or i == len(todo)):
+                    progress(f"steps {i}/{len(todo)}")
+        refresh_index(project / "derived" / "steps", [job[1] for job in todo])
     manifest = pd.DataFrame(results)
     manifest.to_csv(project / "derived" / "steps_manifest.csv", index=False, encoding="utf-8-sig")
     return manifest
 
 
-def load_all_steps(project):
-    """Concatenate every current sidecar into one frame with a dataset_id column."""
-    frames = []
-    for path in sorted((Path(project) / "derived" / "steps").glob("*.parquet")):
-        frame = pd.read_parquet(path)
-        frame.insert(0, "dataset_id", path.stem)
-        frames.append(frame)
-    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=["dataset_id"] + STEP_COLUMNS)
+def refresh_index(directory, paths):
+    """Record freshly written sidecars so the next run needs no footer reads."""
+    index = SidecarIndex(directory)
+    for path in paths:
+        index.meta(path)
+    index.save()
 
 
 def main(argv=None):

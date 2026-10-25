@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import argparse
 import re
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -79,21 +78,6 @@ def _frag_key(fragment):
     return (1, int(digits[-1]) if digits else 0, frag)
 
 
-def _load_role_flags(args):
-    """Return {cycle_derived: is_full} for one dataset from its cycle sidecar."""
-    dataset_id, path = args
-    if not path.exists():
-        return dataset_id, {}
-    side = pd.read_parquet(path, columns=["cycle_derived", "step_role"])
-    flags = {}
-    for cyc, roles in side.groupby("cycle_derived")["step_role"]:
-        rset = set(roles)
-        has_full = ("full_chg" in rset) and ("full_dchg" in rset)
-        has_pulse = bool(rset & {"pulse_chg", "pulse_dchg"})
-        flags[int(cyc)] = bool(has_full and not has_pulse)
-    return dataset_id, flags
-
-
 def _run_assignments(project, datasets):
     """Map each dataset to (run_id, test_key, channel, fragment, physical_cell_id).
 
@@ -130,12 +114,13 @@ def _run_assignments(project, datasets):
     return assign, excluded
 
 
-def _stitch(run_rows, summary_by_ds):
+def _stitch(run_rows):
     """Order a run's datasets and build continuous cycle_index frame.
 
     A combined (non ``_org``) fragment supersedes its original ``_org*``
     fragments; genuinely disjoint fragments are stitched in order.
     """
+    summary_by_ds = {ds: g for ds, g in run_rows.groupby("dataset_id", sort=False)}
     frags = run_rows[["dataset_id", "fragment"]].drop_duplicates()
     primaries = frags[~frags["fragment"].map(_is_original)]
     used = primaries if len(primaries) else frags
@@ -166,8 +151,8 @@ def _slope(x, y):
     return float(np.polyfit(x, y, 1)[0])
 
 
-def _build_one(run_id, run_rows, summary_by_ds, full_flags):
-    frame, superseded, dropped = _stitch(run_rows, summary_by_ds)
+def _build_one(run_id, run_rows):
+    frame, superseded, dropped = _stitch(run_rows)
     reasons = []
     if superseded:
         reasons.append(f"superseded_originals:{superseded}")
@@ -179,10 +164,7 @@ def _build_one(run_id, run_rows, summary_by_ds, full_flags):
                    "quality": "insufficient", "reasons": ";".join(reasons + ["no_cycles"])}
         return profile, pd.DataFrame(), pd.DataFrame()
 
-    is_full = frame.apply(
-        lambda r: full_flags.get((r["dataset_id"], int(r["cycle_derived"])), False),
-        axis=1).to_numpy()
-    frame = frame.assign(is_full=is_full)
+    frame = frame.assign(is_full=frame["is_full"].fillna(False).astype(bool))
 
     run_cycles = pd.DataFrame({
         "run_id": run_id,
@@ -306,31 +288,40 @@ def _build_one(run_id, run_rows, summary_by_ds, full_flags):
     return profile, pd.DataFrame(metrics), run_cycles
 
 
+def _build_chunk(groups):
+    return [_build_one(run_id, rows) for run_id, rows in groups]
+
+
 def build_run_metrics(project, *, workers=8):
     project = Path(project)
     derived = project / "derived"
     summary = pd.read_parquet(derived / "cycles_summary.parquet")
+    if "is_full" not in summary.columns:
+        raise RuntimeError("cycles_summary.parquet predates is_full; rebuild with `db-build`")
     datasets = sorted(summary["dataset_id"].unique())
 
     assign, excluded = _run_assignments(project, datasets)
 
-    # per-dataset cycle sidecars -> is_full flags (parallel I/O)
-    jobs = [(ds, derived / "cycles" / f"{ds}.parquet") for ds in assign]
-    full_flags = {}
-    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
-        for ds, flags in pool.map(_load_role_flags, jobs):
-            for cyc, val in flags.items():
-                full_flags[(ds, cyc)] = val
-
     summary = summary[summary["dataset_id"].isin(assign)].copy()
-    summary["run_id"] = summary["dataset_id"].map(lambda d: assign[d]["run_id"])
-    for col in ("test_key", "channel", "fragment"):
-        summary[col] = summary["dataset_id"].map(lambda d: assign[d][col])
-    summary_by_ds = {ds: g for ds, g in summary.groupby("dataset_id")}
+    meta = pd.DataFrame.from_dict(assign, orient="index")
+    for col in ("run_id", "test_key", "channel", "fragment"):
+        summary[col] = summary["dataset_id"].map(meta[col])
+    # numpy object strings: pyarrow-backed str columns make the many small per-run slices slower
+    text = summary.select_dtypes(include=["string", "str", "object"]).columns
+    summary[text] = summary[text].astype(object)
+
+    groups = list(summary.groupby("run_id"))
+    if workers > 1 and len(groups) > 200:
+        from concurrent.futures import ProcessPoolExecutor
+        size = -(-len(groups) // (workers * 4))
+        with ProcessPoolExecutor(max_workers=workers) as pool:
+            built = [r for chunk in pool.map(_build_chunk, [groups[i:i + size] for i in range(0, len(groups), size)])
+                     for r in chunk]
+    else:
+        built = _build_chunk(groups)
 
     profiles, all_metrics, all_cycles = [], [], []
-    for run_id, run_rows in summary.groupby("run_id"):
-        prof, met, cyc = _build_one(run_id, run_rows, summary_by_ds, full_flags)
+    for prof, met, cyc in built:
         profiles.append(prof)
         if not met.empty:
             all_metrics.append(met)

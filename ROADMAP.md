@@ -100,8 +100,14 @@ CYC/CTS ──► Parquet(+meta) ──► ① library   데이터셋·단위·�
 | G8 | Parquet 비교 작업실은 여전히 4개 프로파일 지표 사용 | 작업실 지표를 `run_metrics`로 교체 또는 작업실을 거미줄 쌍 비교로 대체할지 결정 | 다음 |
 | G9 | 파생 사이클 기반 지표의 검증 미수행 | `metric_validation`: 라벨 있는 652 데이터셋에서 기록 사이클 vs 파생 사이클 지표 비교 (`db/metric_validation.*`, `db-build` 단계). 82.7% 완전 일치, 초기 용량 2% 이내 92.6%, 유지율@100 2% 이내 93.8%, CE 2% 이내 90.4%. 불일치 113건은 전부 펄스 프로토콜의 사이클 계수 차이(PNE TotalCycle = 스케줄 루프) | 완료 |
 | G10 | 저항·휴지(rest) 지표 없음 | 펄스 구간 ΔV/ΔI(유도 전류 한계 검토 후) | 다음 (P6) |
+| G11 | 변경 확인만으로 steps·cycles 단계가 각 약 25 s (NAS footer 2,932회) | 디렉터리별 `_index.json`(size/mtime 키) 캐시 → 0.5 s | 완료 |
+| G12 | run_metrics가 is_full을 위해 사이클 사이드카 2,932개를 다시 읽음, research_db의 iterrows·전체 xlsx | `cycles_summary.is_full`(SUMMARY_VERSION 2), run 병렬화, groupby 집계, xlsx 축소 | 완료 |
+| G13 | metric_validation 단위 계수 (V, Q) 순서 뒤바뀜 → 용량이 1000배, ZERO_AH 판정 왜곡 | 순서 수정 + 회귀 테스트 | 완료 |
+| G14 | 설계 간 V–Q 곡선 비교에 원본 4 GB 필요 | `cycle_profiles` (N사이클마다 + 특수 사이클, 128점) 21 MB, `db-build` 단계 | 완료 |
+| G15 | 장표와 실험 데이터 연결 없음 | `slide-link`: 장표O/데이터X, 데이터O/장표X, 둘다(설계) 목록 | 완료 (후보 검토 필요) |
 
 ## 7. 진행 기록
 
 - 2026-10-24: 3.4.0 정리(원시 DB·카탈로그 생성기 제거, 스탬프 검증, 파생 step/cycle). 본 로드맵 수립.
 - 2026-10-24: P1~P5 구현 (3.5.0). `cyc2parquet` 분리, `run_metrics`/`research_db`/`design_network`/`db_build`/`metric_validation`, 데스크톱·CLI 연결. 구현 점검 G1~G5, G9 반영.
+- 2026-10-25: G11~G15. 빌드 효율화(전체 재계산 약 160 s → 57 s), 사이클 V–Q 프로파일 저장소, 장표↔실험 연결.

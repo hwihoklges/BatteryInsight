@@ -19,35 +19,16 @@ def _summary_row(dataset_id, cyc, chg, dchg, *, cdur=36000.0, ddur=36000.0,
     }
 
 
-def _write_sidecar(project, dataset_id, roles_by_cycle):
-    """roles_by_cycle: {cycle_derived: 'full'|'pulse'|'rest'}."""
-    rows = []
-    step = 1
-    for cyc, kind in roles_by_cycle.items():
-        if kind == "full":
-            steps = ["full_chg", "full_dchg"]
-        elif kind == "pulse":
-            steps = ["pulse_chg", "pulse_dchg"]
-        else:
-            steps = ["rest"]
-        for role in steps:
-            rows.append({"step_derived": step, "start_row": 0, "n_points": 1,
-                         "cycle_derived": cyc, "discharge_index": np.nan, "step_role": role})
-            step += 1
-    side = pd.DataFrame(rows)
-    (project / "derived" / "cycles").mkdir(parents=True, exist_ok=True)
-    side.to_parquet(project / "derived" / "cycles" / f"{dataset_id}.parquet", index=False)
-
-
 def _build_project(tmp_path, summary_rows, dx_rows, sidecars):
+    """``sidecars`` ({dataset: {cycle: 'full'|'pulse'|'rest'}}) sets the summary ``is_full`` flag."""
     project = tmp_path
     (project / "derived").mkdir(parents=True, exist_ok=True)
     (project / "dx").mkdir(parents=True, exist_ok=True)
+    for row in summary_rows:
+        row["is_full"] = sidecars.get(row["dataset_id"], {}).get(row["cycle_derived"]) == "full"
     pd.DataFrame(summary_rows).to_parquet(
         project / "derived" / "cycles_summary.parquet", index=False)
     pd.DataFrame(dx_rows).to_csv(project / "dx" / "dx_files.csv", index=False)
-    for ds, roles in sidecars.items():
-        _write_sidecar(project, ds, roles)
     return project
 
 

@@ -53,3 +53,35 @@ def test_empty_input():
     frame = ds.step_table([], [], [])
     assert len(frame) == 0
     assert list(frame.columns) == ds.STEP_COLUMNS
+
+
+def test_sidecar_index_caches_footer_and_detects_change(tmp_path, monkeypatch):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    frame = ds.step_table(np.linspace(0, 100, 5), np.linspace(3000, 4200, 5), np.linspace(0, 1000, 5))
+    out = tmp_path / "steps" / "a.parquet"
+    out.parent.mkdir()
+
+    def write(sha):
+        table = pa.Table.from_pandas(frame, preserve_index=False).replace_schema_metadata(
+            {"source_sha256": sha, "method": ds.STEP_METHOD})
+        pq.write_table(table, out)
+
+    write("s1")
+    index = ds.SidecarIndex(out.parent)
+    assert ds.is_current(out, "s1", index)
+    assert index.meta(out)["_label_nulls"] == index.meta(out)["_rows"] == 1
+    index.save()
+
+    calls = []
+    monkeypatch.setattr(ds, "read_meta", lambda p: calls.append(p))
+    assert ds.is_current(out, "s1", ds.SidecarIndex(out.parent))   # served from _index.json
+    assert calls == []
+    monkeypatch.undo()
+
+    import os
+    write("s2-longer-sha")
+    os.utime(out, ns=(1, 1))
+    fresh = ds.SidecarIndex(out.parent)
+    assert not ds.is_current(out, "s1", fresh) and ds.is_current(out, "s2-longer-sha", fresh)
+    assert not ds.is_current(tmp_path / "steps" / "missing.parquet", "s1", fresh)

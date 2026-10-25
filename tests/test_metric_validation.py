@@ -148,6 +148,8 @@ def test_validate_metrics_end_to_end(tmp_path, monkeypatch):
     good = csv[csv["dataset_id"] == "good"].iloc[0]
     assert good["reason"] == "agree"
     assert float(good["n_full_cycles_rel_diff"]) < 1e-9
+    # uAh -> Ah (guards the (voltage, capacity) factor order)
+    assert float(good["cap_initial_ah_recorded"]) == pytest.approx(0.095)
 
     assert (project / "db" / "metric_validation.json").exists()
     # the mismatch dataset is the worst offender

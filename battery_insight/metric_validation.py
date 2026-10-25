@@ -238,11 +238,9 @@ def _reason(result):
 # Per-dataset worker (reads one local step sidecar)
 # --------------------------------------------------------------------------- #
 def _process_one(job):
-    dataset_id, step_path, sha256, factors = job
+    dataset_id, step_path, factors = job
     try:
-        if not derived_steps.is_current(Path(step_path), sha256):
-            return {"dataset_id": dataset_id, "status": "step_sidecar_stale"}
-        cf, vf = factors
+        vf, cf = factors  # unit_factors() order is (voltage, capacity)
         if cf is None or vf is None:
             return {"dataset_id": dataset_id, "status": "units_unconfirmed"}
         steps = pd.read_parquet(step_path)
@@ -273,15 +271,23 @@ def validate_metrics(project, *, limit=None, workers=8) -> dict:
     if limit:
         rows = rows[:limit]
 
-    jobs = []
+    step_index = derived_steps.SidecarIndex(project / "derived" / "steps")
+    jobs, skipped = [], {}
     for row in rows:
         step_path = derived_steps.sidecar_path(project, row["dataset_id"])
-        if not step_path.exists():
+        meta = step_index.meta(step_path)
+        if meta is None:
             continue
-        factors = derived_cycles.unit_factors(row)
-        jobs.append((row["dataset_id"], str(step_path), row["sha256"], factors))
+        if not derived_steps.is_current(step_path, row["sha256"], step_index):
+            skipped["step_sidecar_stale"] = skipped.get("step_sidecar_stale", 0) + 1
+        elif meta.get("_label_nulls") == meta.get("_rows"):  # no recorded labels: skip without reading
+            skipped["unlabelled"] = skipped.get("unlabelled", 0) + 1
+        else:
+            jobs.append((row["dataset_id"], str(step_path), derived_cycles.unit_factors(row)))
+    step_index.save()
+    n_candidates = len(jobs) + sum(skipped.values())
 
-    records, skipped = [], {}
+    records = []
     if jobs:
         with ProcessPoolExecutor(max_workers=max(1, workers)) as pool:
             futures = [pool.submit(_process_one, job) for job in jobs]
@@ -293,7 +299,7 @@ def validate_metrics(project, *, limit=None, workers=8) -> dict:
                     skipped[res["status"]] = skipped.get(res["status"], 0) + 1
 
     frame = pd.DataFrame(records)
-    summary = _summarise(frame, skipped, n_candidates=len(jobs))
+    summary = _summarise(frame, skipped, n_candidates=n_candidates)
 
     db = project / "db"
     db.mkdir(parents=True, exist_ok=True)
