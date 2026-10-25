@@ -13,10 +13,18 @@ python -m battery_insight slide-link --project D:/BIProject --slides "D:/2026/�
 - **수정**: metric_validation이 단위 계수 순서를 바꿔 쓰던 문제(용량이 mAh 값인데 Ah로 표기)를 고쳤습니다. 미사용 `derived_steps.load_all_steps`와 고아 파일 `derived/steps_all.parquet`(68.6 MB)를 지웠습니다.
 - **장표 연결** (`slides/slide_link_report.xlsx`): 여러 팀 폴더(`--slides` 여러 개, `팀` 열)의 pptx 슬라이드 XML만 읽어(미디어 제외) 색인을 캐시합니다.
   - **장표 내부 정보 추출** (`slide_facts.extract_sets`): 표·본문의 `Set1: SJ1300A_65_오창제조(7/8)` 같은 Set 표기를 Set 번호·라벨 토큰·날짜·설계/조건(PTFE wt, 기공도, 비율, 로딩, 압력, 온도, 소재)·결과수치(1st 충/방전 mAh/g, ICE, N사이클 방전/유지율/CE, 율특성, DCIR)로 구조화합니다. 행 방향 표, 전치 표(Set이 열), `Set# | 1 | 2` 표, 한 표 안의 여러 블록, 반복 셀(평균)을 처리합니다.
-  - **매칭**: 슬라이드 단위(담당자·날짜·IDF 토큰) 점수에 Set 단위 근거(Set 번호 일치, 라벨 토큰, Set에 적힌 투입일)를 더하고, 장표 결과수치를 DB 사이클 데이터(`run_cycles`)와 대조합니다(ICE ±0.7 %p, N사이클 유지율 ±2 %p; CE는 99 %대로 변별력이 없어 표시만). Set이 식별되고 수치가 맞으면 `verified`, 아니면 `matched`/`candidate`입니다. 타인 폴더 장표는 자동 verified 하지 않습니다.
+  - **매칭**: 슬라이드 단위(담당자·날짜·IDF 토큰) 점수에 Set 단위 근거(Set 번호 일치, 라벨 토큰, Set에 적힌 투입일)를 더하고, 장표 결과수치를 DB 사이클 데이터(`run_cycles`)와 대조합니다(ICE ±0.3 %p, 0.3–0.7 %p는 `≈`로 표시만, N사이클 유지율 ±2 %p; CE는 99 %대로 변별력이 없어 표시만). Set이 식별되고 수치가 맞으면 `verified`, 아니면 `matched`/`candidate`입니다. 결과어가 없는 페이지, 표지형 1쪽, 다른 이름의 담당자 폴더 장표는 후보에서 뺍니다(검토 513건에서 이런 후보 약 1,660개 중 정답 0).
   - **담당자**: 이름이 다르면 다른 사람입니다(별칭 없음). 근거는 담당자 폴더·파일명에 적힌 이름(강), 작성자/마지막 수정자·본문 이름(약)입니다.
-  - **DB 연결**: `slides/slide_decks|slide_sets|slide_test_links.parquet`를 `research.sqlite3`에 같은 이름의 표로 넣고 `v_test_slides` 뷰(시험·설계·장표 Set·수치대조)를 만듭니다. `db-build`로 DB를 다시 만들어도 유지되며, 설계 네트워크에서 노드를 선택하면 연결된 장표 페이지가 보입니다.
-  - 시트: 요약 / 담당자별 / 장표O_데이터X / 장표Set_데이터X / 덱요약 / 데이터O_장표X / 둘다(설계) / 설계별장표 / 수치대조 / 조건충돌 / 링크후보.
+  - **검토 반영** (`slides/slide_link_review.csv`, 재실행해도 유지): test별 `link`(장표 파일·페이지·Set, 확신 high/medium/low, 장표 설계·조건, 담당자 추정) / `no_slide` / `unsure`. `link`는 자동 후보를 대체해 `confirmed`(high·medium) / `probable`(low)이 되고, `no_slide`는 자동 후보를 지웁니다. 장표 위치를 찾지 못한 행은 요약에 보고하고 그 test는 자동 후보를 유지합니다(`unresolved`). 현재 513 test 전부를 검토 에이전트 10개가 검토했습니다(link 323 / no_slide 156 / unsure 34). 사람이 고친 행(`reviewer`가 agent가 아님)이 우선합니다.
+  - **자동매칭 검증**: 검토 결과를 정답으로 자동 1순위의 적중률(같은 슬라이드·사본, Set 번호, 같은 보고서군)과 no_slide 오탐을 매번 계산합니다(요약·`자동매칭 검증` 시트).
+  - **버전·사본**: 파일명에서 날짜·버전(v4.2, (update), 최종 등)·끝 이름을 뗀 `family_key`로 덱 버전군(`family_id`, `family_rank` 1=최신)을 묶고, 같은 내용 슬라이드는 `content_hash`로 묶어 최신 덱 사본만 `is_canonical`로 둡니다. (A)·(A′) 목록은 사본을 한 번만 셉니다(541 덱 중 84 버전군, 사본 슬라이드 3,469).
+  - **DB 연결**: `slides/*.parquet`를 `research.sqlite3`의 같은 이름 표로 넣습니다. 장표에서 읽은 값은 원본 열을 덮어쓰지 않고 `slide_*` 열에 둡니다.
+    - `slide_decks`(버전군), `slide_sets`(Set 언급, 사본 해시), `slide_test_links`(검토 상태 포함), `slide_link_review`
+    - `test_slide_facts`: test별 대표 장표·Set, 장표 설계/조건 문구, 장표 1st 충·방전(mAh/g)·ICE와 DB 1st 충·방전(mAh)·ICE, 장표 mAh/g로 역산한 활물질량(mg)
+    - `design_slide_facts`: DB 설계별 장표 설계 문구·조건, 속성 합의/불일치, 장표 설계 문구 종류 수(2종 이상이면 설계 묶음 점검), 평균 ICE
+    - `owner_candidates`: 이름 없는 사번의 담당자 후보(제안만; `dx/owners.csv`는 바꾸지 않음)
+    - 뷰 `v_test_slides`, `v_test_slide_facts`. `db-build`로 DB를 다시 만들어도 유지되며, 설계 네트워크에서 노드를 선택하면 검토 확정 장표(✓)와 장표 설계 문구가 보입니다.
+  - 시트: 요약 / 담당자별 / 장표O_데이터X / 장표Set_데이터X / 덱요약 / 데이터O_장표X / 둘다(설계) / 설계별장표 / test별 장표사실 / 설계별 장표사실 / 검토결과 / 자동매칭 검증 / 사번 담당자 후보 / 덱 버전군 / 수치대조 / 조건충돌 / 링크후보.
 
 ## 3.5.0: 설계 비교 DB와 설계 거미줄
 

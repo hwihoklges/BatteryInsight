@@ -263,7 +263,7 @@ def _owner_base(x):
 
 
 def _load_tests(project: Path) -> pd.DataFrame:
-    t = pd.read_csv(project / "dx" / "dx_tests.csv", dtype={"test_key": str})
+    t = pd.read_csv(project / "dx" / "dx_tests.csv", dtype={"test_key": str, "requester_code": str})
     for c in ("owner_name", "requester_code", "set_no", "test_type", "test_type_inferred", "sample_name", "tags", "test_name",
               "series_key", "context_path", "temperature_c", "pressure_mpa", "loading_raw", "anomaly", "n_channels"):
         if c not in t:
@@ -469,7 +469,10 @@ def match_tests(project, slide_index: pd.DataFrame, matched_thr=MATCHED_THR, can
 
 
 # ----------------------------------------------------------------------------- set-level evidence
-RET_TOL, ICE_TOL, CE_TOL = 2.0, 0.7, 0.3   # %p tolerance when a slide number is compared with the DB
+RET_TOL, ICE_TOL, CE_TOL = 2.0, 0.3, 0.3   # %p tolerance when a slide number is compared with the DB
+# ICE 0.3-0.7 %p apart is shown as "≈" and counted neither way: in the 513 reviewed tests only 15 % (0.3-0.5) and
+# 4 % (0.5-0.7) of such "agreements" were the reviewed slide, against 41 % at <= 0.1 %p.
+ICE_LOOSE = 0.7
 
 
 def test_cycle_facts(project) -> dict:
@@ -502,16 +505,17 @@ def check_metrics(metrics: dict, facts) -> tuple[int, int, str]:
     ok = bad = 0
     det = []
 
-    def judge(name, slide_v, db_cands, tol, counts=True):
+    def judge(name, slide_v, db_cands, tol, counts=True, loose=None):
         nonlocal ok, bad
         db_cands = [x for x in db_cands if x is not None and np.isfinite(x)]
         if not db_cands:
             return
         best = min(db_cands, key=lambda x: abs(x - slide_v))
         good = abs(best - slide_v) <= tol
-        if counts:  # CE (~99.x% everywhere) is shown but never counted as identifying evidence
+        near = not good and loose is not None and abs(best - slide_v) <= loose
+        if counts and not near:  # CE (~99.x% everywhere) is shown but never counted as identifying evidence
             ok, bad = ok + good, bad + (not good)
-        det.append(f"{name}: 장표 {slide_v:g} / DB {best:.1f} {'✓' if good else '✗'}")
+        det.append(f"{name}: 장표 {slide_v:g} / DB {best:.1f} {'✓' if good else '≈' if near else '✗'}")
 
     def at(arr, n):
         return float(arr[n - 1]) if 0 < n <= len(arr) else None
@@ -526,7 +530,7 @@ def check_metrics(metrics: dict, facts) -> tuple[int, int, str]:
         except (TypeError, ValueError):
             continue
         if key == "ice_pct":
-            judge("ICE", v, [ratio(at(d, 1), at(ch, 1))], ICE_TOL)
+            judge("ICE", v, [ratio(at(d, 1), at(ch, 1))], ICE_TOL, loose=ICE_LOOSE)
             continue
         fam, n = _metric_n(key)
         if fam == "retention" and n and 5 <= n <= len(d) + 1:
@@ -656,6 +660,19 @@ def _finalise(pairs: pd.DataFrame, matched_thr=MATCHED_THR, cand_thr=CANDIDATE_T
     return p.sort_values(["test_key", "score"], ascending=[True, False]).reset_index(drop=True)
 
 
+def _prune(pairs: pd.DataFrame, S: pd.DataFrame) -> pd.DataFrame:
+    """Drop pair types that never held a reviewed link (none of ~1,660 such pairs for the 513 reviewed tests): pages
+    without result words, a cover-like first page of a multi-page deck and decks in another named person's folder."""
+    if not len(pairs):
+        return pairs
+    nrw = S.drop_duplicates(["file_path", "slide_no"]).set_index(["file_path", "slide_no"])["n_result_words"]
+    words = nrw.reindex(pd.MultiIndex.from_arrays([pairs["file_path"], pairs["slide_no"]])).fillna(0).to_numpy()
+    n_pages = pairs["file_path"].map(S.groupby("file_path")["slide_no"].max()).to_numpy()
+    cover = (pairs["slide_no"].to_numpy() == 1) & (n_pages > 1) & (words < 3)
+    keep = (words > 0) & ~cover & (pairs["owner_score"].to_numpy() >= 0)
+    return pairs[keep].reset_index(drop=True)
+
+
 # ----------------------------------------------------------------------------- design keywords
 _KW = re.compile(
     r"(SJ\s?\d+[A-Za-z]?|MT-?\d+(?:\.\d+)?|JX-?\d+|GC-?\d+|DOE-?\d(?:-\d)?|S40f|LNO|PTFE|PVDF|CNT|SBR|CMC|Super\s?P|bimodal|"
@@ -686,6 +703,7 @@ def _tag_cols(tags):
 
 # ----------------------------------------------------------------------------- orchestration
 SLIDE_TABLES = ("slide_decks", "slide_sets", "slide_test_links")
+SLIDE_TABLES_OPT = ("test_slide_facts", "owner_candidates", "slide_link_review")
 
 
 def _slide_owner(folder, people):
@@ -720,11 +738,16 @@ def _conflicts(row) -> str:
 
 
 def attach_to_db(project, conn=None) -> int:
-    """Copy the slide tables (slides/*.parquet) into research.sqlite3 and (re)create view v_test_slides."""
+    """Copy the slide tables (slides/*.parquet) into research.sqlite3, aggregate slide facts per design and
+    (re)create the views v_test_slides / v_test_slide_facts."""
+    from .slide_review import design_slide_facts
     project = Path(project)
     src = {t: project / "slides" / f"{t}.parquet" for t in SLIDE_TABLES}
     if not all(p.exists() for p in src.values()):
         return 0
+    for t in SLIDE_TABLES_OPT:
+        if (project / "slides" / f"{t}.parquet").exists():
+            src[t] = project / "slides" / f"{t}.parquet"
     own = conn is None
     if own:
         dbp = project / "db" / "research.sqlite3"
@@ -739,14 +762,32 @@ def attach_to_db(project, conn=None) -> int:
             n += len(df)
         conn.execute("CREATE INDEX IF NOT EXISTS ix_stl_test ON slide_test_links(test_key)")
         conn.execute("CREATE INDEX IF NOT EXISTS ix_ss_slide ON slide_sets(file_path, slide_no)")
+        lcols = {r[1] for r in conn.execute("PRAGMA table_info(slide_test_links)")}
+        rev = ", ".join(f"l.{c}" for c in ("review_status", "review_confidence", "review_design", "review_conditions",
+                                           "review_note") if c in lcols)
         conn.execute("DROP VIEW IF EXISTS v_test_slides")
-        conn.execute("""CREATE VIEW v_test_slides AS
+        conn.execute(f"""CREATE VIEW v_test_slides AS
             SELECT l.test_key, t.owner, t.test_date, t.set_no, t.sample_name, t.test_type,
                    coalesce(t.design_id, t.candidate_id) AS design_id, g.design_label,
                    l.confidence, l.score, l.team, l.file_name, l.slide_no, l.slide_title, l.set_label,
-                   l.set_attrs, l.set_metrics, l.metric_check, l.evidence, l.file_path
+                   l.set_attrs, l.set_metrics, l.metric_check, l.evidence, {rev + ',' if rev else ''} l.file_path
             FROM slide_test_links l LEFT JOIN tests t ON t.test_key = l.test_key
             LEFT JOIN designs g ON g.design_id = coalesce(t.design_id, t.candidate_id)""")
+        conn.execute("DROP VIEW IF EXISTS v_test_slide_facts")
+        if "test_slide_facts" in src:
+            conn.execute("CREATE INDEX IF NOT EXISTS ix_tsf_test ON test_slide_facts(test_key)")
+            n += design_slide_facts(conn)
+            tcols = {r[1] for r in conn.execute("PRAGMA table_info(tests)")}
+            tsel = "".join(f"t.{c}, " for c in ("owner", "test_date", "set_no", "sample_name", "test_type",
+                                                 "temperature_c", "pressure_mpa") if c in tcols)
+            conn.execute(f"""CREATE VIEW v_test_slide_facts AS
+                SELECT f.test_key, {tsel}coalesce(t.design_id, t.candidate_id) AS design_id, g.design_label,
+                       f.review_status, f.link_status, f.slide_file_name, f.slide_no, f.slide_set_label, f.slide_date,
+                       f.slide_design, f.slide_conditions, f.slide_chg1_mah_g, f.slide_dchg1_mah_g, f.slide_ice_pct,
+                       f.db_dchg1_mah, f.db_ice_pct, f.implied_active_mass_mg, f.metric_check, f.slide_owner_guess,
+                       f.slide_attrs_json, f.slide_metrics_json
+                FROM test_slide_facts f JOIN tests t ON t.test_key = f.test_key
+                LEFT JOIN designs g ON g.design_id = coalesce(t.design_id, t.candidate_id)""")
         conn.commit()
         return n
     finally:
@@ -757,6 +798,8 @@ def attach_to_db(project, conn=None) -> int:
 def build_slide_link(project, slide_roots, *, workers: int = 8, log=print, write_db: bool = True) -> dict:
     """Index decks under ``slide_roots`` (one or more team folders), extract set mentions and link them to tests."""
     from .slide_facts import extract_sets
+    from .slide_review import (REVIEW_EXTRA, apply_review, build_test_facts, deck_families, evaluate_auto, load_review,
+                               owner_candidates, review_status, slide_copies)
     t0 = time.time()
     project = Path(project)
     roots = _roots(slide_roots)
@@ -765,13 +808,20 @@ def build_slide_link(project, slide_roots, *, workers: int = 8, log=print, write
     idx = index_slides(roots, out / "slide_index.parquet", workers=workers, log=log)
     S = idx[idx["slide_no"] > 0].reset_index(drop=True)
     S["slide_owner"] = [_slide_owner(f, p) for f, p in zip(S["owner_folder"], S["deck_people"])]
+    S = pd.concat([S, slide_copies(S)], axis=1)
     sets = extract_sets(S).reset_index(drop=True)
     sets.insert(0, "set_id", np.arange(len(sets)))
     log(f"set mentions: {len(sets)}")
     tests = _load_tests(project)
     facts = test_cycle_facts(project)
     pool = match_tests(project, idx, cand_thr=CANDIDATE_THR - 2.0)
-    pairs = _finalise(match_sets(project, pool, sets, tests, facts))
+    pairs = _prune(_finalise(match_sets(project, pool, sets, tests, facts)), S)
+    review = load_review(project)
+    auto_pairs = pairs
+    pairs, review_bad = apply_review(pairs, review, S, sets, facts)
+    auto_eval = evaluate_auto(auto_pairs, pairs, review, S)
+    if len(review):
+        log(f"review decisions: {len(review)} rows / {review['test_key'].nunique()} tests, unresolved {len(review_bad)}")
     if len(pairs):
         pairs["rank"] = pairs.groupby("test_key")["score"].rank(method="first", ascending=False).astype(int)
     n_decks = idx["file_path"].nunique()
@@ -781,7 +831,7 @@ def build_slide_link(project, slide_roots, *, workers: int = 8, log=print, write
     # --- all links
     lcols = ["test_key", "rank", "confidence", "score", "slide_score", "set_bonus", "team", "owner_folder", "file_name",
              "slide_no", "title", "file_date", "set_label", "set_metrics", "metric_check", "n_agree", "n_disagree",
-             "evidence", "set_attrs", "set_row", "file_path"]
+             "evidence", "set_attrs", "set_row", "file_path"] + REVIEW_EXTRA
     links = pairs[lcols].merge(tinfo, on="test_key", how="left") if len(pairs) else pd.DataFrame(columns=lcols)
     if len(links):
         links["file_date"] = pd.to_datetime(links["file_date"]).dt.strftime("%Y-%m-%d")
@@ -793,9 +843,14 @@ def build_slide_link(project, slide_roots, *, workers: int = 8, log=print, write
     people_any = set(S["slide_owner"]) | set(" ".join(S["deck_people"].fillna("")).split())
     tb = tests[~tests["test_key"].isin(linked)].copy()
     tb["owner_in_slides"] = tb["owner_base"].isin(people_any)
+    rv_status = review_status(review)
+    rv_note = (review.groupby("test_key")["note"].agg(lambda x: " | ".join(v for v in x if v)) if len(review)
+               else pd.Series(dtype=str))
+    tb["review_status"] = [rv_status.get(k, "") for k in tb["test_key"]]
+    tb["review_note"] = [rv_note.get(k, "") for k in tb["test_key"]]
     keepc = ["test_key", "owner_name", "requester_code", "test_date", "set_no", "test_type", "test_type_inferred", "sample_name",
              "tags", "temperature_c", "pressure_mpa", "loading_raw", "n_channels", "anomaly", "context_path", "test_name",
-             "owner_in_slides"]
+             "owner_in_slides", "review_status", "review_note"]
     tb = tb[keepc].copy()
     tb["test_date"] = tb["test_date"].dt.strftime("%Y-%m-%d")
 
@@ -822,31 +877,34 @@ def build_slide_link(project, slide_roots, *, workers: int = 8, log=print, write
         cm["design_id"] = cm["test_key"].map(lambda k: dinfo.get(k, (None,) * 3)[0])
         cm["design_label"] = cm["test_key"].map(lambda k: dinfo.get(k, (None,) * 3)[1])
         cm["test_date"] = cm["test_date"].dt.strftime("%Y-%m-%d")
-        cm = cm[["test_key", "confidence", "score", "owner_name", "test_date", "set_no", "test_type", "test_type_inferred",
-                 "sample_name", "material", "loading_tag", "loading_raw", "process", "pressure_mpa", "temperature_c",
-                 "cell_format", "supplier", "design_id", "design_label", "team", "file_name", "slide_pages", "title",
-                 "file_date", "set_label", "set_attrs", "set_metrics", "metric_check", "condition_conflict", "n_decks",
-                 "other_decks", "evidence", "slide_design_keywords", "slide_design_text", "n_channels", "anomaly",
-                 "file_path"]].sort_values(["owner_name", "test_date"])
+        cm = cm[["test_key", "confidence", "score", "review_status", "owner_name", "test_date", "set_no", "test_type",
+                 "test_type_inferred", "sample_name", "material", "loading_tag", "loading_raw", "process", "pressure_mpa",
+                 "temperature_c", "cell_format", "supplier", "design_id", "design_label", "team", "file_name", "slide_pages",
+                 "title", "file_date", "set_label", "review_design", "review_conditions", "set_attrs", "set_metrics",
+                 "metric_check", "condition_conflict", "n_decks", "other_decks", "evidence", "slide_design_keywords",
+                 "slide_design_text", "n_channels", "anomaly", "file_path"]].sort_values(["owner_name", "test_date"])
 
     # --- design-level view
     dz = pd.DataFrame()
     if len(cm):
         dz = cm[cm["design_id"].notna()].groupby(["design_id", "design_label"], dropna=False).agg(
             n_tests=("test_key", "nunique"), n_verified=("confidence", lambda x: int((x == "verified").sum())),
+            n_confirmed=("confidence", lambda x: int(x.isin(["confirmed", "probable"]).sum())),
             owners=("owner_name", lambda x: ", ".join(sorted(set(map(str, x.dropna()))))),
             decks=("file_name", lambda x: " | ".join(list(dict.fromkeys(x))[:6])),
             set_labels=("set_label", lambda x: " | ".join([v for v in dict.fromkeys(x) if v][:6])),
+            review_designs=("review_design", lambda x: " | ".join([v for v in dict.fromkeys(x) if isinstance(v, str) and v][:4])),
             slide_attrs=("set_attrs", lambda x: " | ".join([v for v in dict.fromkeys(x) if v and v != "{}"][:4])),
         ).reset_index().sort_values("n_tests", ascending=False)
 
-    # --- (A) slides without data: experiment-like slides with no linked test
+    # --- (A) slides without data: experiment-like slides with no linked test (identical copies count once)
     hit = set(zip(pairs["file_path"], pairs["slide_no"])) if len(pairs) else set()
     nsets = sets.groupby(["file_path", "slide_no"]).size()
     S["n_sets"] = [int(nsets.get((f, n), 0)) for f, n in zip(S["file_path"], S["slide_no"])]
     S["exp_like"] = (S["n_result_words"] >= 2) | ((S["n_result_words"] >= 1) & S["has_table"]) | (S["n_sets"] > 0)
     S["linked"] = [(f, n) in hit for f, n in zip(S["file_path"], S["slide_no"])]
-    sa = S[S["exp_like"] & ~S["linked"]].copy()
+    S["linked_any_copy"] = S["content_hash"].isin(set(S.loc[S["linked"], "content_hash"]))
+    sa = S[S["exp_like"] & ~S["linked_any_copy"] & S["is_canonical"]].copy()
     tests_by_owner = tests["owner_base"].value_counts()
     sa["owner_tests_in_db"] = sa["slide_owner"].map(tests_by_owner).fillna(0).astype(int)
     kws = [design_keywords(a, b) for a, b in zip(sa["text"], sa["table_text"])]
@@ -855,7 +913,7 @@ def build_slide_link(project, slide_roots, *, workers: int = 8, log=print, write
     sa["file_date"] = sa["file_date"].dt.strftime("%Y-%m-%d")
     sa = sa.rename(columns={"title": "slide_title", "slide_no": "page"})[
         ["team", "slide_owner", "owner_folder", "file_name", "file_date", "page", "slide_title", "n_sets", "design_tokens",
-         "n_result_words", "has_table", "owner_tests_in_db", "file_path", "slide_text_snippet"]].sort_values(
+         "n_result_words", "has_table", "owner_tests_in_db", "n_copies", "file_path", "slide_text_snippet"]].sort_values(
         ["team", "slide_owner", "file_name", "page"])
     deck_sum = sa.groupby(["team", "slide_owner", "file_name", "file_path"]).agg(
         n_slides_without_data=("page", "size"), pages=("page", lambda x: ",".join(map(str, x))),
@@ -866,13 +924,16 @@ def build_slide_link(project, slide_roots, *, workers: int = 8, log=print, write
 
     # --- set mentions with results but no test (slide-level 'data missing' at Set granularity)
     linked_sets = set(pairs.loc[pairs["set_row"] >= 0, "set_row"]) if len(pairs) else set()
-    meta = S[["file_path", "slide_no", "team", "slide_owner", "file_name", "file_date", "title"]]
+    meta = S[["file_path", "slide_no", "team", "slide_owner", "file_name", "file_date", "title", "content_hash",
+              "is_canonical"]]
     sets = sets.merge(meta, on=["file_path", "slide_no"], how="left")
-    sets["linked_tests"] = sets["set_id"].map(
-        pairs[pairs["set_row"] >= 0].groupby("set_row")["test_key"].apply(lambda x: ",".join(dict.fromkeys(x)))
-        if len(pairs) else {}).fillna("")
+    lt = (pairs[pairs["set_row"] >= 0].groupby("set_row")["test_key"].apply(lambda x: ",".join(dict.fromkeys(x)))
+          .to_dict() if len(pairs) else {})
+    sets["linked_tests"] = [lt.get(i, "") for i in sets["set_id"]]
+    sig = sets["content_hash"].astype(str) + "|" + sets["set_no"].astype(str) + "|" + sets["set_label"].map(_norm)
+    linked_sig = set(sig[sets["set_id"].isin(linked_sets)])
     has_num = sets["metrics"].fillna("").str.len() > 2
-    ss = sets[has_num & ~sets["set_id"].isin(linked_sets)].copy()
+    ss = sets[has_num & ~sig.isin(linked_sig) & sets["is_canonical"].fillna(True).astype(bool)].copy()
     ss["file_date"] = pd.to_datetime(ss["file_date"]).dt.strftime("%Y-%m-%d")
     ss = ss[["team", "slide_owner", "file_name", "file_date", "slide_no", "title", "set_no", "set_label", "dates", "attrs",
              "metrics", "file_path"]].sort_values(["team", "slide_owner", "file_name", "slide_no"])
@@ -884,17 +945,36 @@ def build_slide_link(project, slide_roots, *, workers: int = 8, log=print, write
         team=("team", "first"), owner_folder=("owner_folder", "first"), slide_owner=("slide_owner", "first"),
         deck_people=("deck_people", "first"), file_name=("file_name", "first"), file_date=("file_date", "first"),
         n_slides=("slide_no", "size"), n_exp_slides=("exp_like", "sum"), n_sets=("n_sets", "sum"),
-        n_linked_slides=("linked", "sum")).reset_index()
+        n_linked_slides=("linked", "sum"), n_copied_slides=("is_canonical", lambda x: int((~x).sum()))).reset_index()
     deck_tbl["file_date"] = pd.to_datetime(deck_tbl["file_date"]).dt.strftime("%Y-%m-%d")
     deck_tbl["n_linked_tests"] = deck_tbl["file_path"].map(links.groupby("file_path")["test_key"].nunique()
                                                            if len(links) else {}).fillna(0).astype(int)
+    deck_tbl = deck_families(deck_tbl).sort_values(["team", "file_date", "file_name"]).reset_index(drop=True)
+    deck_sum = deck_sum.merge(deck_tbl[["file_path", "family_id", "family_rank", "family_size"]], on="file_path", how="left")
     set_tbl = sets.drop(columns=["file_date"]).copy()
     set_tbl["set_no"] = set_tbl["set_no"].astype("Int64")
     link_tbl = links.rename(columns={"title": "slide_title", "set_row": "set_id"}).drop(
         columns=["owner_name", "test_date", "set_no", "sample_name", "temperature_c", "pressure_mpa"], errors="ignore")
-    for name, df in (("slide_decks", deck_tbl), ("slide_sets", set_tbl), ("slide_test_links", link_tbl)):
+    tfacts = build_test_facts(links, review, tests, facts)
+    deck_owner = dict(zip(deck_tbl["file_path"], deck_tbl["slide_owner"]))
+    owners_sug = owner_candidates(review, links, tests, deck_owner)
+    rv_tbl = review.copy()
+    rv_tbl["resolved"] = ~rv_tbl.index.isin(review_bad.index) | (rv_tbl["decision"] != "link")
+    for name, df in (("slide_decks", deck_tbl), ("slide_sets", set_tbl), ("slide_test_links", link_tbl),
+                     ("test_slide_facts", tfacts), ("owner_candidates", owners_sug), ("slide_link_review", rv_tbl)):
         df.to_parquet(out / f"{name}.parquet", index=False)
     n_db = attach_to_db(project) if write_db else 0
+    dfacts = pd.DataFrame()
+    if n_db:
+        c = sqlite3.connect(str(project / "db" / "research.sqlite3"))
+        try:
+            dfacts = pd.read_sql("SELECT g.design_label, f.* FROM design_slide_facts f "
+                                 "LEFT JOIN designs g ON g.design_id = f.design_id "
+                                 "ORDER BY f.n_slide_designs DESC, f.n_tests_with_slides DESC", c)
+        except (sqlite3.Error, pd.errors.DatabaseError):
+            pass
+        finally:
+            c.close()
     if n_db and (project / "db" / "network.html").exists():
         try:  # refresh slide references shown in the design network
             from .design_network import build_network
@@ -904,24 +984,42 @@ def build_slide_link(project, slide_roots, *, workers: int = 8, log=print, write
 
     # --- summary
     conf = cm["confidence"].value_counts() if len(cm) else pd.Series(dtype=int)
+    rstat = rv_status.value_counts()
     summ = [("슬라이드 루트", " ; ".join(roots))]
     for team, g in S.groupby("team"):
         summ.append((f"[{team}] 덱 / 슬라이드 / Set 언급", f"{g['file_path'].nunique()} / {len(g)} / {int(g['n_sets'].sum())}"))
     summ += [
         ("파싱 오류 덱", len(errors)), ("실험 DB test 수", len(tests)),
-        ("(C) 장표 연결 test 수", len(cm)), ("  - verified (장표 수치 = DB 수치)", int(conf.get("verified", 0))),
+        ("검토 반영 test 수 (link / no_slide / unsure)",
+         f"{rv_status.size} ({int(rstat.get('link', 0))} / {int(rstat.get('no_slide', 0))} / {int(rstat.get('unsure', 0))})"),
+        ("검토 행 중 장표 위치 확인 실패", len(review_bad)),
+        ("(C) 장표 연결 test 수", len(cm)), ("  - confirmed (검토 확정)", int(conf.get("confirmed", 0))),
+        ("  - probable (검토, 낮은 확신)", int(conf.get("probable", 0))),
+        ("  - verified (장표 수치 = DB 수치)", int(conf.get("verified", 0))),
         ("  - matched (높음)", int(conf.get("matched", 0))), ("  - candidate (검토)", int(conf.get("candidate", 0))),
-        ("(B) 장표 없는 test 수", len(tb)), ("  - 담당자 이름이 장표에 전혀 없음", int((~tb["owner_in_slides"]).sum())),
-        ("(A) 데이터 없는 실험성 슬라이드 수", len(sa)), ("(A') 결과수치 있는데 test 미연결 Set 언급", len(ss)),
+        ("(B) 장표 없는 test 수", len(tb)), ("  - 검토 결과 장표 없음 확정", int((tb["review_status"] == "no_slide").sum())),
+        ("  - 담당자 이름이 장표에 전혀 없음", int((~tb["owner_in_slides"]).sum())),
+        ("(A) 데이터 없는 실험성 슬라이드 수 (동일 사본 1회)", len(sa)), ("(A') 결과수치 있는데 test 미연결 Set 언급", len(ss)),
+        ("동일 내용 사본 슬라이드 (버전/복사)", int((~S["is_canonical"]).sum())),
+        ("덱 버전군 (2개 이상 버전)", int((deck_tbl.drop_duplicates("family_id")["family_size"] > 1).sum())),
+        ("장표 1st 방전용량(mAh/g)으로 활물질량 역산된 test", int(tfacts["implied_active_mass_mg"].notna().sum())),
+        ("장표 사실이 붙은 DB 설계 / 장표 설계 문구 2종 이상(설계 묶음 점검)",
+         f"{len(dfacts)} / {int((dfacts['n_slide_designs'] > 1).sum()) if len(dfacts) else 0}"),
         ("수치 대조 링크 (일치/불일치 포함)", len(numcmp)), ("조건 충돌 링크", len(conflicts)),
         ("research.sqlite3 기록 행", n_db), ("담당자 매칭 규칙", "이름 완전일치만 (별칭 없음)"),
         ("임계값 matched / candidate", f"{MATCHED_THR} / {CANDIDATE_THR}"), ("소요(초)", round(time.time() - t0, 1))]
+    for r in auto_eval.itertuples(index=False):
+        v = (f"{r.n_hit}/{r.n_tests}" + (f" (Set까지 {int(r.n_set_hit)})" if pd.notna(r.n_set_hit) else "")
+             + (f", 같은 보고서군 {int(r.n_family_hit)}" if pd.notna(r.n_family_hit) else ""))
+        summ.append((f"[자동매칭 검증] {r.check}", v))
     summ = pd.DataFrame(summ, columns=["항목", "값"])
     tb_owner = tests.set_index("test_key")["owner_base"].replace("", "(미상)")
     by_owner = pd.concat([
         tb["test_key"].map(tb_owner).value_counts().rename("B: 장표 없는 test"),
         sa.groupby("slide_owner").size().rename("A: 데이터 없는 슬라이드"),
         (cm["test_key"].map(tb_owner).value_counts() if len(cm) else pd.Series(dtype=int)).rename("C: 연결 test"),
+        (cm.loc[cm["confidence"].isin(["confirmed", "probable"]), "test_key"].map(tb_owner).value_counts() if len(cm)
+         else pd.Series(dtype=int)).rename("C 중 검토확정"),
         (cm.loc[cm["confidence"] == "verified", "test_key"].map(tb_owner).value_counts() if len(cm)
          else pd.Series(dtype=int)).rename("C 중 verified")], axis=1).fillna(0).astype(int).rename_axis("담당자").reset_index()
     by_owner["담당자"] = by_owner["담당자"].replace("", "(작성자 미상)")
@@ -930,6 +1028,7 @@ def build_slide_link(project, slide_roots, *, workers: int = 8, log=print, write
         df.to_csv(out / name, index=False, encoding="utf-8-sig")
     w(links, "slide_links.csv"); w(sa, "slides_without_data.csv"); w(tb, "tests_without_slides.csv")
     w(cm, "matched_designs.csv"); w(deck_sum, "decks_without_data.csv"); w(ss, "set_mentions_without_data.csv")
+    w(tfacts, "test_slide_facts.csv"); w(owners_sug, "owner_candidates.csv")
     ren = {"owner_name": "담당자", "test_date": "시험일", "test_type": "시험종류", "test_type_inferred": "추정종류",
            "sample_name": "샘플", "material": "소재", "loading_tag": "로딩(태그)", "loading_raw": "로딩(원본)", "process": "공정",
            "pressure_mpa": "압력(MPa)", "temperature_c": "온도(C)", "cell_format": "셀포맷", "supplier": "공급처",
@@ -945,10 +1044,31 @@ def build_slide_link(project, slide_roots, *, workers: int = 8, log=print, write
            "set_label": "장표 Set 표기", "set_attrs": "장표 설계/조건", "set_metrics": "장표 결과수치", "metric_check": "수치대조(장표/DB)",
            "condition_conflict": "조건충돌", "n_agree": "일치수", "n_disagree": "불일치수", "n_sets": "Set언급수", "dates": "날짜",
            "attrs": "장표 설계/조건", "metrics": "장표 결과수치", "rank": "순위", "set_row": "SetID", "n_tests": "test수",
-           "n_verified": "verified수", "owners": "담당자들", "decks": "장표", "set_labels": "장표 Set 표기들", "slide_attrs": "장표 설계/조건"}
+           "n_verified": "verified수", "owners": "담당자들", "decks": "장표", "set_labels": "장표 Set 표기들", "slide_attrs": "장표 설계/조건",
+           "review_status": "검토상태", "review_note": "검토메모", "review_design": "장표 설계(검토)",
+           "review_conditions": "장표 조건(검토)", "review_confidence": "검토확신", "reviewer": "검토자", "owner_guess": "담당자 추정",
+           "n_copies": "동일사본수", "family_id": "버전군ID", "family_key": "버전군키", "family_rank": "버전순위(1=최신)",
+           "family_size": "버전수", "n_confirmed": "검토확정수", "review_designs": "장표 설계(검토)들", "link_status": "연결상태",
+           "n_slide_links": "연결슬라이드수", "slide_file_name": "장표파일", "slide_set_label": "장표 Set", "slide_team": "장표팀",
+           "slide_date": "장표일자", "slide_design": "장표 설계", "slide_conditions": "장표 조건",
+           "slide_chg1_mah_g": "장표 1st충전(mAh/g)", "slide_dchg1_mah_g": "장표 1st방전(mAh/g)", "slide_ice_pct": "장표 ICE(%)",
+           "db_chg1_mah": "DB 1st충전(mAh)", "db_dchg1_mah": "DB 1st방전(mAh)", "db_ice_pct": "DB ICE(%)",
+           "implied_active_mass_mg": "역산 활물질량(mg)", "slide_owner_guess": "담당자 추정(장표)", "slide_evidence": "근거",
+           "slide_file_path": "경로", "candidate_name": "후보 이름", "n_tests_supporting": "근거 test수",
+           "n_code_tests": "사번 test수", "share": "비율", "from_review": "검토근거", "from_decks": "장표근거",
+           "suggestion": "판단", "example_tests": "예시 test", "decision": "판정", "note": "메모", "resolved": "장표위치확인",
+           "n_copied_slides": "사본 슬라이드수", "n_linked_tests": "연결 test수", "n_linked_slides": "연결 슬라이드수",
+           "check": "검증항목", "n_hit": "슬라이드 일치", "n_set_hit": "Set까지 일치", "rate": "비율(Set 기준)",
+           "n_family_hit": "같은 보고서군 일치(버전·페이지 무관)", "n_tests_with_slides": "장표 연결 test수",
+           "n_slide_designs": "장표 설계 문구 종류", "slide_designs": "장표 설계들", "attr_consensus_json": "장표 속성 합의(JSON)",
+           "attr_conflicts": "속성 불일치", "slide_ice_pct_mean": "장표 ICE 평균(%)",
+           "slide_dchg1_mah_g_mean": "장표 1st방전 평균(mAh/g)", "implied_active_mass_mg_mean": "역산 활물질량 평균(mg)"}
     xl = out / "slide_link_report.xlsx"
     sheets = [("요약", summ), ("담당자별", by_owner), ("장표O_데이터X", sa), ("장표Set_데이터X", ss),
               ("장표O_데이터X(덱요약)", deck_sum), ("데이터O_장표X", tb), ("둘다(설계)", cm), ("설계별장표", dz),
+              ("test별 장표사실", tfacts), ("설계별 장표사실", dfacts), ("검토결과", rv_tbl), ("자동매칭 검증", auto_eval),
+              ("사번 담당자 후보", owners_sug),
+              ("덱 버전군", deck_tbl[deck_tbl["family_size"] > 1].sort_values(["family_id", "family_rank"])),
               ("수치대조", numcmp), ("조건충돌", conflicts), ("링크후보", links)]
     with pd.ExcelWriter(xl, engine="xlsxwriter") as xw:
         for name, d in sheets:
@@ -962,7 +1082,10 @@ def build_slide_link(project, slide_roots, *, workers: int = 8, log=print, write
                 ws.set_column(ci, ci, min(60, max(8, int(q) + 2 if q == q else 8, len(str(col)) + 2)))
     res = dict(out=str(out), decks=n_decks, slides=len(S), set_mentions=len(sets), errors=errors, summary=summ,
                by_owner=by_owner, slides_without_data=sa, sets_without_data=ss, deck_summary=deck_sum,
-               tests_without_slides=tb, matched=cm, designs=dz, links=links, seconds=time.time() - t0)
+               tests_without_slides=tb, matched=cm, designs=dz, links=links, test_facts=tfacts, review=rv_tbl,
+               review_unresolved=review_bad, owner_candidates=owners_sug, deck_table=deck_tbl, auto_eval=auto_eval,
+               design_facts=dfacts,
+               seconds=time.time() - t0)
     log(summ.to_string(index=False))
     return res
 

@@ -213,8 +213,9 @@ def _design_slides(conn, per_design=6) -> dict:
     try:
         rows = conn.execute(
             "SELECT design_id, file_name, slide_no, set_label, confidence, max(score) AS s FROM v_test_slides "
-            "WHERE design_id IS NOT NULL AND confidence IN ('verified','matched') "
-            "GROUP BY design_id, file_name, slide_no ORDER BY design_id, (confidence='verified') DESC, s DESC").fetchall()
+            "WHERE design_id IS NOT NULL AND confidence IN ('confirmed','probable','verified','matched') "
+            "GROUP BY design_id, file_name, slide_no "
+            "ORDER BY design_id, (confidence IN ('confirmed','verified')) DESC, s DESC").fetchall()
     except sqlite3.Error:
         return {}
     out = {}
@@ -223,6 +224,17 @@ def _design_slides(conn, per_design=6) -> dict:
         if len(lst) < per_design:
             lst.append({"file": fname, "slide": sno, "set": label or "", "confidence": conf})
     return out
+
+
+def _design_slide_facts(conn) -> dict:
+    """design_id -> slide-stated design / conditions aggregated by slide_review.design_slide_facts."""
+    try:
+        rows = conn.execute("SELECT design_id, slide_designs, slide_conditions, attr_conflicts, n_confirmed, "
+                            "n_slide_designs FROM design_slide_facts").fetchall()
+    except sqlite3.Error:
+        return {}
+    return {d: {"design": a or "", "conditions": b or "", "conflicts": c or "", "n_confirmed": n or 0,
+                "n_designs": k or 0} for d, a, b, c, n, k in rows}
 
 
 def _collect(conn, cohort_filter=None, design_threshold=0.3):
@@ -338,8 +350,11 @@ def _collect(conn, cohort_filter=None, design_threshold=0.3):
     # so isolated nodes still show.
     node_list = sorted(design_nodes.values(), key=lambda d: d["design_id"])
     slides_by_design = _design_slides(conn)
+    slide_facts = _design_slide_facts(conn)
     for n in node_list:
         n["slides"] = slides_by_design.get(n["design_id"], [])
+        if n["design_id"] in slide_facts:
+            n["slide_facts"] = slide_facts[n["design_id"]]
 
     # ---- design edges (global, structural) ----
     design_edges = []
@@ -736,10 +751,12 @@ function renderSelection(){
     }).join(" · ");
     const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
     const refs=selected.map(id=>{
-      const sl=byId[id].slides||[];
-      if(!sl.length) return "";
-      return `<div class="muted" style="margin-top:4px">📄 ${esc(byId[id].label)} 장표: `+
-        sl.map(s=>`${esc(s.file)} p${s.slide}${s.set?" ("+esc(s.set)+")":""}${s.confidence==="verified"?" ✓":""}`).join(" · ")+"</div>";
+      const sl=byId[id].slides||[], sf=byId[id].slide_facts;
+      if(!sl.length && !sf) return "";
+      let h=`<div class="muted" style="margin-top:4px">📄 ${esc(byId[id].label)} 장표: `+
+        sl.map(s=>`${esc(s.file)} p${s.slide}${s.set?" ("+esc(s.set)+")":""}${(s.confidence==="verified"||s.confidence==="confirmed")?" ✓":""}`).join(" · ")+"</div>";
+      if(sf && (sf.design||sf.conditions)) h+=`<div class="muted" style="margin-left:14px">장표 설계: ${esc(sf.design)}${sf.conditions?" · 조건: "+esc(sf.conditions):""}${sf.conflicts?" · ⚠ 불일치: "+esc(sf.conflicts):""}${sf.n_designs>1?" · ⚠ 장표 설계 문구 "+sf.n_designs+"종":""}</div>`;
+      return h;
     }).join("");
     info.innerHTML+=refs;
   }

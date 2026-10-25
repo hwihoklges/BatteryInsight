@@ -131,4 +131,6 @@ def test_check_metrics_tolerances():
     assert (ok, bad) == (2, 0), det          # CE is shown but not counted
     ok, bad, _ = sl.check_metrics({"ice_pct": 88.0}, (d, ch))
     assert (ok, bad) == (0, 1)
+    ok, bad, det = sl.check_metrics({"ice_pct": 89.5}, (d, ch))   # 0.5 %p: neutral, neither agree nor disagree
+    assert (ok, bad) == (0, 0) and "≈" in det
     assert sl.check_metrics({"retention_1cyc_pct": 50}, (d, ch))[:2] == (0, 0)  # too-short windows ignored
