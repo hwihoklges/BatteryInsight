@@ -86,7 +86,8 @@ def build_database(project, *, workers=8, network=True, force=False, profile_eve
     stage("validation", lambda: _validation_brief(metric_validation.validate_metrics(project, workers=workers)),
           [library_db, steps_dir], [db / "metric_validation.json"], [metric_validation, derived_cycles])
     stage("research_db", lambda: research_db.build_research_db(project),
-          [dx / "dx_files.csv", dx / "dx_tests.csv", db / "design_map.csv", *run_outputs[:2]],
+          [dx / "dx_files.csv", dx / "dx_tests.csv", db / "design_map.csv", *run_outputs[:2],
+           project / "slides" / "slide_test_links.parquet"],
           [db / "research.sqlite3"], [research_db, run_metrics])
     if network:
         from . import design_network

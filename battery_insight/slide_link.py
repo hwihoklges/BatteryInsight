@@ -29,9 +29,8 @@ PR = "{http://schemas.openxmlformats.org/package/2006/relationships}"
 MATCHED_THR = 7.0
 CANDIDATE_THR = 4.5
 SPECIFIC_DF = 30          # token is "specific" if it appears in <= this many tests
-# DB owner -> slide folder presumed to be the same person (DB 임수현 has no folder; 양수현 decks mention its tests)
-OWNER_ALIAS = {"임수현": ["양수현"]}
-MAX_DF = 60               # tokens in more tests than this are ignored (generic)
+# Owners are matched by exact name only: different names are different people (no aliasing).
+MAX_DF = 60                # tokens in more tests than this are ignored (generic)
 
 # ----------------------------------------------------------------------------- slide indexing
 _DATE_STRONG = [
@@ -124,14 +123,20 @@ def _slide_order(z: zipfile.ZipFile):
     return sorted(sl, key=lambda n: int(re.findall(r"\d+", n)[-1]))
 
 
-def _parse_deck(path: str, root: str):
+def _person(s: str) -> str:
+    """'김제덕(JEADUK KIM)[jeduk123]/선임/...' -> '김제덕'; '최 유이' -> '최유이'; non-person -> ''."""
+    head = re.split(r"[(\[/<]", str(s or ""), maxsplit=1)[0].replace(" ", "")
+    return head if re.fullmatch(r"[가-힣]{2,4}", head) else ""
+
+
+def _parse_deck(path: str, root: str, team: str = ""):
     p = Path(path)
     rel = p.relative_to(root)
     parts = rel.parts
     owner = parts[0] if len(parts) > 1 else ""
     st = p.stat()
-    base = dict(file_path=str(p), owner_folder=owner, file_name=p.name, rel_dir="/".join(parts[:-1]),
-                size=st.st_size, mtime=st.st_mtime, author="", modified="", error="")
+    base = dict(file_path=str(p), team=team, owner_folder=owner, file_name=p.name, rel_dir="/".join(parts[:-1]),
+                size=st.st_size, mtime=st.st_mtime, author="", last_modified_by="", deck_people="", modified="", error="")
     fdate = _file_date(p.stem)
     try:
         with zipfile.ZipFile(path) as z:
@@ -139,10 +144,14 @@ def _parse_deck(path: str, root: str):
                 core = z.read("docProps/core.xml").decode("utf8", "ignore")
                 m = re.search(r"<dc:creator>(.*?)</dc:creator>", core, re.S)
                 base["author"] = m.group(1) if m else ""
+                m = re.search(r"<cp:lastModifiedBy>(.*?)</cp:lastModifiedBy>", core, re.S)
+                base["last_modified_by"] = m.group(1) if m else ""
                 m = re.search(r"<dcterms:modified[^>]*>(.*?)</dcterms:modified>", core, re.S)
                 base["modified"] = m.group(1)[:10] if m else ""
             except Exception:
                 pass
+            people = [x for x in (_person(base["author"]), _person(base["last_modified_by"])) if x]
+            base["deck_people"] = " ".join(dict.fromkeys(people))
             if pd.isna(fdate):
                 fdate = pd.Timestamp(base["modified"]) if base["modified"] else pd.Timestamp(st.st_mtime, unit="s")
             base["file_date"] = fdate
@@ -171,44 +180,57 @@ def _parse_deck(path: str, root: str):
                  "error": f"{type(e).__name__}:{e}"[:200]}]
 
 
-def index_slides(slide_root, cache_path=None, workers: int = 8, log=print) -> pd.DataFrame:
-    slide_root = str(slide_root)
+INDEX_COLS_REQUIRED = ("team", "deck_people", "last_modified_by")
+
+
+def _roots(slide_roots) -> list[str]:
+    if isinstance(slide_roots, (str, Path)):
+        slide_roots = [slide_roots]
+    return [str(r) for r in slide_roots]
+
+
+def index_slides(slide_roots, cache_path=None, workers: int = 8, log=print) -> pd.DataFrame:
+    """Index every pptx/pptm under one or more roots; ``team`` = root folder name (e.g. 2팀, 4팀)."""
     files = []
-    for d, _, fs in os.walk(slide_root):
-        for f in fs:
-            if f.startswith("~$") or not f.lower().endswith((".pptx", ".pptm")):
-                continue
-            fp = os.path.join(d, f)
-            try:
-                st = os.stat(fp)
-                files.append((fp, st.st_size, st.st_mtime))
-            except OSError:
-                pass
+    for root in _roots(slide_roots):
+        team = Path(root).name
+        for d, _, fs in os.walk(root):
+            for f in fs:
+                if f.startswith("~$") or not f.lower().endswith((".pptx", ".pptm")):
+                    continue
+                fp = os.path.join(d, f)
+                try:
+                    st = os.stat(fp)
+                    files.append((fp, st.st_size, st.st_mtime, root, team))
+                except OSError:
+                    pass
     cache = pd.DataFrame()
     if cache_path and Path(cache_path).exists():
         try:
             cache = pd.read_parquet(cache_path)
         except Exception:
             cache = pd.DataFrame()
+        if len(cache) and not all(c in cache for c in INDEX_COLS_REQUIRED):
+            cache = pd.DataFrame()  # older schema -> reparse
     keep, todo = [], []
     if len(cache):
-        sig = cache.groupby("file_path")[["size", "mtime"]].first()
-        known = {k: (int(r["size"]), float(r["mtime"])) for k, r in sig.iterrows()}
+        sig = cache.groupby("file_path")[["size", "mtime", "team"]].first()
+        known = {k: (int(r["size"]), float(r["mtime"]), r["team"]) for k, r in sig.iterrows()}
     else:
         known = {}
-    for fp, sz, mt in files:
-        (keep if known.get(fp) == (sz, mt) else todo).append(fp)
+    for fp, sz, mt, root, team in files:
+        (keep if known.get(fp) == (sz, mt, team) else todo).append((fp, root, team))
     log(f"decks: {len(files)} (cached {len(keep)}, to parse {len(todo)})")
     new = []
     if todo:
         with ThreadPoolExecutor(workers) as ex:
-            for n, rows in enumerate(ex.map(lambda f: _parse_deck(f, slide_root), todo), 1):
+            for n, rows in enumerate(ex.map(lambda a: _parse_deck(*a), todo), 1):
                 new.extend(rows)
                 if n % 50 == 0:
                     log(f"  parsed {n}/{len(todo)}")
     parts = []
     if len(cache):
-        parts.append(cache[cache["file_path"].isin(set(keep))])
+        parts.append(cache[cache["file_path"].isin({k[0] for k in keep})])
     if new:
         parts.append(pd.DataFrame(new))
     df = pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
@@ -340,26 +362,37 @@ def match_tests(project, slide_index: pd.DataFrame, matched_thr=MATCHED_THR, can
     cov = (W @ Mf) / np.maximum(denom, 1e-6)[:, None]
     nspec = Wsp @ M.astype(np.float32)
 
-    # owner
-    folders = S["owner_folder"].to_numpy()
+    # owner: exact names only. Person folder (2팀/<이름>) is strong; deck author/lastModifiedBy is weak evidence.
+    folders = S["owner_folder"].fillna("").to_numpy()
     person_f = set(f for f in set(folders) if PERSON.match(f))
+    deck_people = [set(str(x).split()) for x in S.get("deck_people", pd.Series([""] * nS)).fillna("")]
+    # owner names written in the deck file name (strong) or on the slide itself (weak), e.g. "..._김선준 및 이준호.pptx"
+    named_file = [set() for _ in range(nS)]
+    body = (S["title"].fillna("") + " " + S["text"].fillna("")).to_numpy()
+    fnames = S["file_name"].fillna("").to_numpy()
+    for name in set(tests["owner_base"]) - {""}:
+        for j in np.flatnonzero(np.char.find(fnames.astype(str), name) >= 0):
+            named_file[j].add(name)
+        for j in np.flatnonzero(np.char.find(body.astype(str), name) >= 0):
+            deck_people[j].add(name)
+    all_people = person_f | set().union(*deck_people) | set().union(*named_file)
     own = np.zeros((nT, nS), np.float32)
     for i, r in enumerate(tests.to_dict("records")):
         people = set()
         if r["owner_base"]:
             people.add(r["owner_base"])
-            people.update(OWNER_ALIAS.get(r["owner_base"], []))
         for seg in str(r.get("context_path") or "").split("/"):
             seg = _owner_base(seg.strip())
-            if seg in person_f:
+            if seg in all_people:
                 people.add(seg)
         if not people:
             continue
-        same = np.isin(folders, list(people))
-        other = np.isin(folders, list(person_f)) & ~same
-        own[i] = np.where(same, 2.0, np.where(other, -1.5, 0.0))
-        if r["owner_base"] and not (people & person_f):
-            own[i] = np.where(same, 2.0, 0.0)  # owner has no slide folder: no penalty
+        same = np.isin(folders, list(people)) | np.array([bool(people & nf) for nf in named_file])
+        weak = np.array([bool(people & dp) for dp in deck_people]) & ~same
+        other = np.isin(folders, list(person_f)) & ~same & ~weak
+        own[i] = np.where(same, 2.0, np.where(weak, 1.0, np.where(other, -1.5, 0.0)))
+        if not (people & all_people):
+            own[i] = 0.0  # owner has no slides anywhere: neither bonus nor penalty
 
     # date
     sd = S["file_date"].to_numpy("datetime64[D]")
@@ -413,24 +446,214 @@ def match_tests(project, slide_index: pd.DataFrame, matched_thr=MATCHED_THR, can
             ev.append("date:exact")
         elif dscore[i, j] > 0:
             ev.append("date:md")
-        if own[i, j] > 0:
+        if own[i, j] >= 2:
             ev.append("owner")
+        elif own[i, j] > 0:
+            ev.append("owner(author)")
         if prox[i, j] > 0.5:
             ev.append("near")
         if hit:
             ev.append("tok:" + ",".join(hit[:8]))
         if extra[i, j] > 0:
             ev.append("cond")
-        recs.append((i, j, float(score[i, j]), "; ".join(ev), float(cov[i, j]), float(dscore[i, j])))
+        recs.append((i, j, float(score[i, j]), "; ".join(ev), float(cov[i, j]), float(dscore[i, j]), float(own[i, j])))
     if not recs:
         return pd.DataFrame()
-    pr = pd.DataFrame(recs, columns=["ti", "sj", "score", "evidence", "token_cov", "date_score"])
+    pr = pd.DataFrame(recs, columns=["ti", "sj", "score", "evidence", "token_cov", "date_score", "owner_score"])
     pr["confidence"] = np.where(pr["score"] >= matched_thr, "matched", "candidate")
     pr["test_key"] = tests["test_key"].to_numpy()[pr["ti"]]
-    for c in ["file_path", "file_name", "owner_folder", "slide_no", "title", "file_date"]:
-        pr[c] = S[c].to_numpy()[pr["sj"]]
+    for c in ["file_path", "file_name", "team", "owner_folder", "slide_no", "title", "file_date"]:
+        pr[c] = S[c].to_numpy()[pr["sj"]] if c in S else ""
     pr["slide_row"] = pr["sj"]
     return pr.sort_values(["test_key", "score"], ascending=[True, False]).reset_index(drop=True)
+
+
+# ----------------------------------------------------------------------------- set-level evidence
+RET_TOL, ICE_TOL, CE_TOL = 2.0, 0.7, 0.3   # %p tolerance when a slide number is compared with the DB
+
+
+def test_cycle_facts(project) -> dict:
+    """test_key -> (discharge_ah[cycle], charge_ah[cycle]) median over the test's runs (cycle 1 = first)."""
+    p = Path(project) / "db" / "run_cycles.parquet"
+    if not p.exists():
+        return {}
+    c = pd.read_parquet(p, columns=["run_id", "cycle_index", "discharge_capacity_ah", "charge_capacity_ah"])
+    c = c[~c["run_id"].str.startswith("ds:")]
+    c["test_key"] = c["run_id"].str.split(":", n=1).str[0]
+    g = c.groupby(["test_key", "cycle_index"], sort=True)[["discharge_capacity_ah", "charge_capacity_ah"]].median()
+    out = {}
+    for k, d in g.groupby(level=0, sort=False):
+        out[k] = (d["discharge_capacity_ah"].to_numpy(float), d["charge_capacity_ah"].to_numpy(float))
+    return out
+
+
+def _metric_n(key: str):
+    m = re.fullmatch(r"(retention|ce|discharge|charge)_(\d+)cyc_(pct|mah_g)", key)
+    return (m.group(1), int(m.group(2))) if m else (None, None)
+
+
+def check_metrics(metrics: dict, facts) -> tuple[int, int, str]:
+    """Compare slide-reported numbers with the DB cycle series. Returns (n_agree, n_disagree, detail)."""
+    if not metrics or facts is None:
+        return 0, 0, ""
+    d, ch = facts
+    if not len(d) or not np.isfinite(d[0]) or d[0] <= 0:
+        return 0, 0, ""
+    ok = bad = 0
+    det = []
+
+    def judge(name, slide_v, db_cands, tol, counts=True):
+        nonlocal ok, bad
+        db_cands = [x for x in db_cands if x is not None and np.isfinite(x)]
+        if not db_cands:
+            return
+        best = min(db_cands, key=lambda x: abs(x - slide_v))
+        good = abs(best - slide_v) <= tol
+        if counts:  # CE (~99.x% everywhere) is shown but never counted as identifying evidence
+            ok, bad = ok + good, bad + (not good)
+        det.append(f"{name}: 장표 {slide_v:g} / DB {best:.1f} {'✓' if good else '✗'}")
+
+    def at(arr, n):
+        return float(arr[n - 1]) if 0 < n <= len(arr) else None
+
+    def ratio(a, b):
+        return 100.0 * a / b if a is not None and b not in (None, 0) and np.isfinite(b) else None
+
+    refs = [x for x in (at(d, 1), at(d, 2), at(d, 3), np.nanmax(d[:3]) if len(d) else None) if x]
+    for key, v in metrics.items():
+        try:
+            v = float(v)
+        except (TypeError, ValueError):
+            continue
+        if key == "ice_pct":
+            judge("ICE", v, [ratio(at(d, 1), at(ch, 1))], ICE_TOL)
+            continue
+        fam, n = _metric_n(key)
+        if fam == "retention" and n and 5 <= n <= len(d) + 1:
+            dn = at(d, min(n, len(d)))
+            judge(f"유지율@{n}", v, [ratio(dn, r) for r in refs], RET_TOL)
+        elif fam == "ce" and n and n <= len(d):
+            judge(f"CE@{n}", v, [ratio(at(d, n), at(ch, n))], CE_TOL, counts=False)
+    # discharge@N / discharge@1st reported in mAh/g -> unit-free retention
+    d1 = metrics.get("discharge_1st_mah_g")
+    for key, v in metrics.items():
+        fam, n = _metric_n(key)
+        if fam == "discharge" and d1 and n and 5 <= n <= len(d) + 1 and "retention_%dcyc_pct" % n not in metrics:
+            try:
+                judge(f"방전비@{n}", 100 * float(v) / float(d1), [ratio(at(d, min(n, len(d))), r) for r in refs], RET_TOL)
+            except (TypeError, ValueError, ZeroDivisionError):
+                pass
+    return ok, bad, "; ".join(det)
+
+
+def _set_no(x):
+    m = re.search(r"\d+", str(x)) if x is not None and x == x else None
+    return int(m.group(0)) if m else None
+
+
+def match_sets(project, pairs: pd.DataFrame, sets: pd.DataFrame, tests: pd.DataFrame, facts: dict) -> pd.DataFrame:
+    """Refine slide-level pairs with set mentions on the slide (set number, label tokens, dates, numbers).
+
+    Adds set_label / set_attrs / set_metrics / metric_check / set_bonus and recomputes score + confidence
+    (``verified`` when slide-reported numbers agree with the DB cycle data).
+    """
+    import json
+    if not len(pairs):
+        return pairs
+    pairs = pairs.copy()
+    for c, v in (("set_label", ""), ("set_attrs", ""), ("set_metrics", ""), ("metric_check", ""),
+                 ("set_evidence", ""), ("set_bonus", 0.0), ("n_agree", 0), ("n_disagree", 0), ("set_row", -1)):
+        pairs[c] = v
+    if sets is None or not len(sets):
+        return pairs
+    tinfo = {}
+    for r in tests.to_dict("records"):
+        d = r.get("test_date")
+        ymd = d.strftime("%Y%m%d") if pd.notna(d) else ""
+        tinfo[r["test_key"]] = (_set_no(r.get("set_no")), ymd, ymd[4:], _test_tokens(r))
+    srec = {}  # set_id -> (set_no, label tokens, dates, metrics dict)
+    for s in sets.itertuples():
+        try:
+            met = json.loads(s.metrics) if isinstance(s.metrics, str) and s.metrics else {}
+        except ValueError:
+            met = {}
+        srec[s.Index] = (None if pd.isna(s.set_no) else int(s.set_no),
+                         set(_norm(x).strip(".") for x in str(s.label_tokens).split()), set(str(s.dates).split()), met)
+    by_slide = {k: list(g.index) for k, g in sets.groupby(["file_path", "slide_no"], sort=False)}
+    rows = []
+    for idx, key, fp, sn in zip(pairs.index, pairs["test_key"], pairs["file_path"], pairs["slide_no"]):
+        ids = by_slide.get((fp, sn))
+        if not ids:
+            continue
+        tset, ymd, md, toks = tinfo[key]
+        tf = facts.get(key)
+        best = None
+        for sid in ids:
+            sno, ltok, sd, met = srec[sid]
+            bonus, ev = 0.0, []
+            if tset is not None and sno is not None:
+                if sno == tset:
+                    bonus += 1.5
+                    ev.append(f"set{sno}")
+                else:
+                    bonus -= 1.0
+            shared = sorted(t_ for t_ in toks if t_ in ltok or (len(t_) >= 4 and any(t_ in x for x in ltok)))
+            if shared:
+                bonus += min(2.0, 0.8 * len(shared))
+                ev.append("label:" + ",".join(shared[:5]))
+            if ymd and ymd in sd:
+                bonus += 2.0
+                ev.append("setdate")
+            elif md and md in sd:
+                bonus += 1.5
+                ev.append("setdate:md")
+            n_ok = n_bad = 0
+            det = ""
+            if ev and met and tf is not None:  # numbers only confirm a set that is already identified
+                n_ok, n_bad, det = check_metrics(met, tf)
+                if n_ok and not n_bad:
+                    bonus += 2.5
+                    ev.append(f"수치일치{n_ok}")
+                elif n_ok > n_bad:
+                    bonus += 0.5
+                    ev.append(f"수치일부일치{n_ok}/{n_ok + n_bad}")
+                elif n_bad:
+                    bonus -= 1.0
+                    ev.append(f"수치불일치{n_bad}")
+            if best is None or bonus > best[0]:
+                best = (bonus, sid, ev, n_ok, n_bad, det)
+        if best is None or best[0] <= 0:
+            continue
+        bonus, sid, ev, n_ok, n_bad, det = best
+        s = sets.loc[sid]
+        lbl = s["set_label"] if isinstance(s["set_label"], str) else ""
+        rows.append((idx, (f"Set{int(s['set_no'])} " if pd.notna(s["set_no"]) else "") + lbl, s["attrs"], s["metrics"],
+                     det, "; ".join(ev), bonus, n_ok, n_bad, int(sid)))
+    if rows:
+        u = pd.DataFrame(rows, columns=["i", "set_label", "set_attrs", "set_metrics", "metric_check", "set_evidence",
+                                        "set_bonus", "n_agree", "n_disagree", "set_row"]).set_index("i")
+        pairs.loc[u.index, u.columns] = u
+    return pairs
+
+
+def _finalise(pairs: pd.DataFrame, matched_thr=MATCHED_THR, cand_thr=CANDIDATE_THR) -> pd.DataFrame:
+    if not len(pairs):
+        return pairs
+    p = pairs.copy()
+    p["slide_score"] = p["score"]
+    p["score"] = p["score"] + p["set_bonus"].astype(float)
+    p["evidence"] = np.where(p["set_evidence"] != "", p["evidence"] + " | " + p["set_evidence"], p["evidence"])
+    ev = p["set_evidence"].astype(str)
+    num_ok = ev.str.contains(r"수치일치\d+(?:;|$)")
+    # a different person's folder means "someone else's experiment": never auto-verify those
+    verified = num_ok & (p["score"] >= cand_thr) & (p["owner_score"] >= 0)
+    p["evidence"] = np.where(p["owner_score"] < 0, p["evidence"] + " | 타인폴더", p["evidence"])
+    p["confidence"] = np.where(verified, "verified", np.where(p["score"] >= matched_thr, "matched", "candidate"))
+    keep = p["score"] >= cand_thr
+    # pairs pulled in from below the slide-level threshold need strong set evidence, not just shared tokens
+    strong = ev.str.contains("setdate") | num_ok | (ev.str.contains(r"(?:^|; )set\d") & ev.str.contains("label:"))
+    p = p[keep & ((p["slide_score"] >= cand_thr) | strong)]
+    return p.sort_values(["test_key", "score"], ascending=[True, False]).reset_index(drop=True)
 
 
 # ----------------------------------------------------------------------------- design keywords
@@ -462,157 +685,295 @@ def _tag_cols(tags):
 
 
 # ----------------------------------------------------------------------------- orchestration
-def build_slide_link(project, slide_root, *, workers: int = 8, log=print) -> dict:
+SLIDE_TABLES = ("slide_decks", "slide_sets", "slide_test_links")
+
+
+def _slide_owner(folder, people):
+    if isinstance(folder, str) and PERSON.match(folder):
+        return folder
+    ps = str(people or "").split()
+    return ps[0] if ps else ""
+
+
+def _json_get(s, key):
+    import json
+    try:
+        return json.loads(s).get(key) if isinstance(s, str) and s else None
+    except ValueError:
+        return None
+
+
+def _conflicts(row) -> str:
+    """Slide-stated conditions (set attrs, else slide text) vs DB fields."""
+    out = []
+    for key, db_key, fmt in (("temperature_c", "temperature_c", "{:g}℃"), ("pressure_mpa", "pressure_mpa", "{:g}MPa")):
+        sv = _json_get(row.get("set_attrs"), key)
+        dv = row.get(db_key)
+        if sv is None or dv is None or dv != dv:
+            continue
+        try:
+            if abs(float(sv) - float(dv)) > 1e-6:
+                out.append(f"{key}: 장표 {fmt.format(float(sv))} ≠ DB {fmt.format(float(dv))}")
+        except (TypeError, ValueError):
+            pass
+    return "; ".join(out)
+
+
+def attach_to_db(project, conn=None) -> int:
+    """Copy the slide tables (slides/*.parquet) into research.sqlite3 and (re)create view v_test_slides."""
+    project = Path(project)
+    src = {t: project / "slides" / f"{t}.parquet" for t in SLIDE_TABLES}
+    if not all(p.exists() for p in src.values()):
+        return 0
+    own = conn is None
+    if own:
+        dbp = project / "db" / "research.sqlite3"
+        if not dbp.exists():
+            return 0
+        conn = sqlite3.connect(str(dbp))
+    try:
+        n = 0
+        for t, p in src.items():
+            df = pd.read_parquet(p)
+            df.to_sql(t, conn, if_exists="replace", index=False)
+            n += len(df)
+        conn.execute("CREATE INDEX IF NOT EXISTS ix_stl_test ON slide_test_links(test_key)")
+        conn.execute("CREATE INDEX IF NOT EXISTS ix_ss_slide ON slide_sets(file_path, slide_no)")
+        conn.execute("DROP VIEW IF EXISTS v_test_slides")
+        conn.execute("""CREATE VIEW v_test_slides AS
+            SELECT l.test_key, t.owner, t.test_date, t.set_no, t.sample_name, t.test_type,
+                   coalesce(t.design_id, t.candidate_id) AS design_id, g.design_label,
+                   l.confidence, l.score, l.team, l.file_name, l.slide_no, l.slide_title, l.set_label,
+                   l.set_attrs, l.set_metrics, l.metric_check, l.evidence, l.file_path
+            FROM slide_test_links l LEFT JOIN tests t ON t.test_key = l.test_key
+            LEFT JOIN designs g ON g.design_id = coalesce(t.design_id, t.candidate_id)""")
+        conn.commit()
+        return n
+    finally:
+        if own:
+            conn.close()
+
+
+def build_slide_link(project, slide_roots, *, workers: int = 8, log=print, write_db: bool = True) -> dict:
+    """Index decks under ``slide_roots`` (one or more team folders), extract set mentions and link them to tests."""
+    from .slide_facts import extract_sets
     t0 = time.time()
     project = Path(project)
+    roots = _roots(slide_roots)
     out = project / "slides"
     out.mkdir(exist_ok=True)
-    idx = index_slides(slide_root, out / "slide_index.parquet", workers=workers, log=log)
-    tests = _load_tests(project)
-    pairs = match_tests(project, idx)
+    idx = index_slides(roots, out / "slide_index.parquet", workers=workers, log=log)
     S = idx[idx["slide_no"] > 0].reset_index(drop=True)
+    S["slide_owner"] = [_slide_owner(f, p) for f, p in zip(S["owner_folder"], S["deck_people"])]
+    sets = extract_sets(S).reset_index(drop=True)
+    sets.insert(0, "set_id", np.arange(len(sets)))
+    log(f"set mentions: {len(sets)}")
+    tests = _load_tests(project)
+    facts = test_cycle_facts(project)
+    pool = match_tests(project, idx, cand_thr=CANDIDATE_THR - 2.0)
+    pairs = _finalise(match_sets(project, pool, sets, tests, facts))
+    if len(pairs):
+        pairs["rank"] = pairs.groupby("test_key")["score"].rank(method="first", ascending=False).astype(int)
     n_decks = idx["file_path"].nunique()
     errors = idx[idx["error"] != ""][["file_path", "error"]].drop_duplicates("file_path")
+    tinfo = tests[["test_key", "owner_name", "test_date", "set_no", "sample_name", "temperature_c", "pressure_mpa"]]
 
-    # --- all pairs
-    links = pairs.drop(columns=["ti", "sj", "slide_row"]) if len(pairs) else pd.DataFrame()
+    # --- all links
+    lcols = ["test_key", "rank", "confidence", "score", "slide_score", "set_bonus", "team", "owner_folder", "file_name",
+             "slide_no", "title", "file_date", "set_label", "set_metrics", "metric_check", "n_agree", "n_disagree",
+             "evidence", "set_attrs", "set_row", "file_path"]
+    links = pairs[lcols].merge(tinfo, on="test_key", how="left") if len(pairs) else pd.DataFrame(columns=lcols)
     if len(links):
-        links = links.merge(tests[["test_key", "owner_name", "test_date", "sample_name"]], on="test_key", how="left")
-        links["file_date"] = links["file_date"].dt.strftime("%Y-%m-%d")
+        links["file_date"] = pd.to_datetime(links["file_date"]).dt.strftime("%Y-%m-%d")
         links["test_date"] = links["test_date"].dt.strftime("%Y-%m-%d")
+        links["condition_conflict"] = [_conflicts(r) for r in links.to_dict("records")]
+
     # --- (B) tests without slides
     linked = set(pairs["test_key"]) if len(pairs) else set()
-    best = pairs.groupby("test_key")["score"].max() if len(pairs) else pd.Series(dtype=float)
+    people_any = set(S["slide_owner"]) | set(" ".join(S["deck_people"].fillna("")).split())
     tb = tests[~tests["test_key"].isin(linked)].copy()
-    tb["best_score_below_thr"] = tb["test_key"].map(
-        # best sub-threshold score is not tracked; mark owner folder availability instead
-        lambda k: np.nan)
-    tb = tb.drop(columns=["best_score_below_thr"])
-    folders = set(S["owner_folder"])
-    tb["owner_has_slide_folder"] = tb["owner_base"].isin(folders) | tb["owner_base"].map(
-        lambda o: any(a in folders for a in OWNER_ALIAS.get(o, [])))
+    tb["owner_in_slides"] = tb["owner_base"].isin(people_any)
     keepc = ["test_key", "owner_name", "requester_code", "test_date", "set_no", "test_type", "test_type_inferred", "sample_name",
              "tags", "temperature_c", "pressure_mpa", "loading_raw", "n_channels", "anomaly", "context_path", "test_name",
-             "owner_has_slide_folder"]
+             "owner_in_slides"]
     tb = tb[keepc].copy()
     tb["test_date"] = tb["test_date"].dt.strftime("%Y-%m-%d")
 
-    # --- (C) matched designs (one row per test)
+    # --- (C) tests with slides: best link + slide design facts + DB design
     dinfo = _design_info(project)
     cm = pd.DataFrame()
-    if len(pairs):
-        pr = pairs.copy()
-        pr["rank"] = pr.groupby("test_key")["score"].rank(method="first", ascending=False)
-        bestp = pr[pr["rank"] == 1].set_index("test_key")
-        # best deck = deck of best slide; all slides of that deck above threshold listed
-        rows = []
-        for k, g in pr.groupby("test_key"):
-            b = g.iloc[0]
-            deck = g[g["file_path"] == b["file_path"]]
-            decks_all = g.groupby("file_path")["score"].max().sort_values(ascending=False)
-            s = S.iloc[int(b["slide_row"])]
-            kw, dtxt = design_keywords(s["text"], s["table_text"])
-            rows.append(dict(test_key=k, confidence=("matched" if b["score"] >= MATCHED_THR else "candidate"),
-                             score=round(b["score"], 2), evidence=b["evidence"], slide_owner_folder=b["owner_folder"],
-                             deck_path=b["file_path"], slide_pages=",".join(str(int(x)) for x in sorted(deck["slide_no"])),
-                             slide_title=b["title"], slide_file_date=b["file_date"].strftime("%Y-%m-%d"),
-                             n_decks=len(decks_all), other_decks=" | ".join(Path(p).name for p in decks_all.index[1:6]),
-                             slide_design_keywords=kw, slide_design_text=dtxt))
-        cm = pd.DataFrame(rows).merge(tests, on="test_key", how="left")
+    if len(links):
+        best = links[links["rank"] == 1].copy()
+        decks = links.groupby("test_key").agg(n_decks=("file_path", "nunique"),
+                                              other_decks=("file_name", lambda x: " | ".join(list(dict.fromkeys(x))[1:6])))
+        pages = links.groupby(["test_key", "file_path"])["slide_no"].apply(lambda x: ",".join(map(str, sorted(set(x)))))
+        best["slide_pages"] = [pages.get((k, f), "") for k, f in zip(best["test_key"], best["file_path"])]
+        srow = S.set_index(["file_path", "slide_no"])
+        kw = []
+        for f, n in zip(best["file_path"], best["slide_no"]):
+            r = srow.loc[(f, n)]
+            r = r.iloc[0] if isinstance(r, pd.DataFrame) else r
+            kw.append(design_keywords(r["text"], r["table_text"]))
+        best["slide_design_keywords"] = [k[0] for k in kw]
+        best["slide_design_text"] = [k[1] for k in kw]
+        cm = best.drop(columns=["owner_name", "test_date", "set_no", "sample_name", "temperature_c", "pressure_mpa"]).merge(
+            decks, on="test_key").merge(tests, on="test_key", how="left")
         cm = pd.concat([cm, cm["tags"].apply(_tag_cols)], axis=1)
         cm["design_id"] = cm["test_key"].map(lambda k: dinfo.get(k, (None,) * 3)[0])
         cm["design_label"] = cm["test_key"].map(lambda k: dinfo.get(k, (None,) * 3)[1])
         cm["test_date"] = cm["test_date"].dt.strftime("%Y-%m-%d")
-        cm["test_type_final"] = cm["test_type_final"]
-        cm = cm[["test_key", "confidence", "score", "owner_name", "test_date", "test_type", "test_type_inferred", "sample_name",
-                 "material", "loading_tag", "loading_raw", "process", "pressure_mpa", "temperature_c", "cell_format", "supplier",
-                 "design_id", "design_label", "deck_path", "slide_pages", "slide_title", "slide_file_date", "n_decks", "other_decks",
-                 "evidence", "slide_design_keywords", "slide_design_text", "n_channels", "anomaly"]].sort_values(
-            ["owner_name", "test_date"])
+        cm = cm[["test_key", "confidence", "score", "owner_name", "test_date", "set_no", "test_type", "test_type_inferred",
+                 "sample_name", "material", "loading_tag", "loading_raw", "process", "pressure_mpa", "temperature_c",
+                 "cell_format", "supplier", "design_id", "design_label", "team", "file_name", "slide_pages", "title",
+                 "file_date", "set_label", "set_attrs", "set_metrics", "metric_check", "condition_conflict", "n_decks",
+                 "other_decks", "evidence", "slide_design_keywords", "slide_design_text", "n_channels", "anomaly",
+                 "file_path"]].sort_values(["owner_name", "test_date"])
 
-    # --- (A) slides without data
-    hit_rows = set(pairs["slide_row"]) if len(pairs) else set()
-    S["exp_like"] = (S["n_result_words"] >= 2) | ((S["n_result_words"] >= 1) & S["has_table"])
-    sa = S[S["exp_like"] & ~S.index.isin(hit_rows)].copy()
+    # --- design-level view
+    dz = pd.DataFrame()
+    if len(cm):
+        dz = cm[cm["design_id"].notna()].groupby(["design_id", "design_label"], dropna=False).agg(
+            n_tests=("test_key", "nunique"), n_verified=("confidence", lambda x: int((x == "verified").sum())),
+            owners=("owner_name", lambda x: ", ".join(sorted(set(map(str, x.dropna()))))),
+            decks=("file_name", lambda x: " | ".join(list(dict.fromkeys(x))[:6])),
+            set_labels=("set_label", lambda x: " | ".join([v for v in dict.fromkeys(x) if v][:6])),
+            slide_attrs=("set_attrs", lambda x: " | ".join([v for v in dict.fromkeys(x) if v and v != "{}"][:4])),
+        ).reset_index().sort_values("n_tests", ascending=False)
+
+    # --- (A) slides without data: experiment-like slides with no linked test
+    hit = set(zip(pairs["file_path"], pairs["slide_no"])) if len(pairs) else set()
+    nsets = sets.groupby(["file_path", "slide_no"]).size()
+    S["n_sets"] = [int(nsets.get((f, n), 0)) for f, n in zip(S["file_path"], S["slide_no"])]
+    S["exp_like"] = (S["n_result_words"] >= 2) | ((S["n_result_words"] >= 1) & S["has_table"]) | (S["n_sets"] > 0)
+    S["linked"] = [(f, n) in hit for f, n in zip(S["file_path"], S["slide_no"])]
+    sa = S[S["exp_like"] & ~S["linked"]].copy()
     tests_by_owner = tests["owner_base"].value_counts()
-    for src, dsts in OWNER_ALIAS.items():
-        for dst in dsts:
-            tests_by_owner[dst] = tests_by_owner.get(dst, 0) + tests_by_owner.get(src, 0)
-    sa["owner_tests_in_db"] = sa["owner_folder"].map(tests_by_owner).fillna(0).astype(int)
+    sa["owner_tests_in_db"] = sa["slide_owner"].map(tests_by_owner).fillna(0).astype(int)
     kws = [design_keywords(a, b) for a, b in zip(sa["text"], sa["table_text"])]
     sa["design_tokens"] = [k[0] for k in kws]
     sa["slide_text_snippet"] = sa["text"].str.slice(0, 300)
     sa["file_date"] = sa["file_date"].dt.strftime("%Y-%m-%d")
     sa = sa.rename(columns={"title": "slide_title", "slide_no": "page"})[
-        ["owner_folder", "file_name", "file_date", "page", "slide_title", "design_tokens", "n_result_words", "has_table",
-         "owner_tests_in_db", "file_path", "slide_text_snippet"]].sort_values(["owner_folder", "file_name", "page"])
-    deck_sum = sa.groupby(["owner_folder", "file_name", "file_path"]).agg(
+        ["team", "slide_owner", "owner_folder", "file_name", "file_date", "page", "slide_title", "n_sets", "design_tokens",
+         "n_result_words", "has_table", "owner_tests_in_db", "file_path", "slide_text_snippet"]].sort_values(
+        ["team", "slide_owner", "file_name", "page"])
+    deck_sum = sa.groupby(["team", "slide_owner", "file_name", "file_path"]).agg(
         n_slides_without_data=("page", "size"), pages=("page", lambda x: ",".join(map(str, x))),
         owner_tests_in_db=("owner_tests_in_db", "first"),
         titles=("slide_title", lambda x: " / ".join(t[:40] for t in list(x)[:4]))).reset_index()
     deck_sum["n_slides_total"] = deck_sum["file_path"].map(S.groupby("file_path").size())
     deck_sum["no_owner_data"] = deck_sum["owner_tests_in_db"] == 0
 
-    # --- summary
-    n_cm = cm["test_key"].nunique() if len(cm) else 0
-    n_hi = int((cm["confidence"] == "matched").sum()) if len(cm) else 0
-    summ = pd.DataFrame([
-        ("슬라이드 루트", str(slide_root)), ("덱 수", n_decks), ("슬라이드 수", len(S)), ("파싱 오류 덱", len(errors)),
-        ("실험 DB test 수", len(tests)),
-        ("(C) 매칭 test 수 (high+candidate)", n_cm), ("  - high(matched)", n_hi), ("  - candidate(검토)", n_cm - n_hi),
-        ("(B) 장표 없는 test 수", len(tb)), ("(A) 데이터 없는 실험성 슬라이드 수", len(sa)),
-        ("  - 그 중 owner 폴더 DB 데이터 0건 슬라이드", int((sa["owner_tests_in_db"] == 0).sum())),
-        ("임계값 matched / candidate", f"{MATCHED_THR} / {CANDIDATE_THR}"), ("소요(초)", round(time.time() - t0, 1)),
-    ], columns=["항목", "값"])
-    by_owner = pd.concat([
-        tb["owner_name"].fillna("(미상)").value_counts().rename("B: 장표 없는 test"),
-        sa["owner_folder"].value_counts().rename("A: 데이터 없는 슬라이드"),
-        (cm["owner_name"].fillna("(미상)").value_counts() if len(cm) else pd.Series(dtype=int)).rename("C: 매칭 test")], axis=1
-    ).fillna(0).astype(int).rename_axis("owner").reset_index()
+    # --- set mentions with results but no test (slide-level 'data missing' at Set granularity)
+    linked_sets = set(pairs.loc[pairs["set_row"] >= 0, "set_row"]) if len(pairs) else set()
+    meta = S[["file_path", "slide_no", "team", "slide_owner", "file_name", "file_date", "title"]]
+    sets = sets.merge(meta, on=["file_path", "slide_no"], how="left")
+    sets["linked_tests"] = sets["set_id"].map(
+        pairs[pairs["set_row"] >= 0].groupby("set_row")["test_key"].apply(lambda x: ",".join(dict.fromkeys(x)))
+        if len(pairs) else {}).fillna("")
+    has_num = sets["metrics"].fillna("").str.len() > 2
+    ss = sets[has_num & ~sets["set_id"].isin(linked_sets)].copy()
+    ss["file_date"] = pd.to_datetime(ss["file_date"]).dt.strftime("%Y-%m-%d")
+    ss = ss[["team", "slide_owner", "file_name", "file_date", "slide_no", "title", "set_no", "set_label", "dates", "attrs",
+             "metrics", "file_path"]].sort_values(["team", "slide_owner", "file_name", "slide_no"])
+    numcmp = links[(links["n_agree"] + links["n_disagree"]) > 0] if len(links) else links
+    conflicts = links[links["condition_conflict"] != ""] if len(links) else links
 
-    # --- write
+    # --- DB tables (parquet in slides/, copied into research.sqlite3)
+    deck_tbl = S.groupby("file_path").agg(
+        team=("team", "first"), owner_folder=("owner_folder", "first"), slide_owner=("slide_owner", "first"),
+        deck_people=("deck_people", "first"), file_name=("file_name", "first"), file_date=("file_date", "first"),
+        n_slides=("slide_no", "size"), n_exp_slides=("exp_like", "sum"), n_sets=("n_sets", "sum"),
+        n_linked_slides=("linked", "sum")).reset_index()
+    deck_tbl["file_date"] = pd.to_datetime(deck_tbl["file_date"]).dt.strftime("%Y-%m-%d")
+    deck_tbl["n_linked_tests"] = deck_tbl["file_path"].map(links.groupby("file_path")["test_key"].nunique()
+                                                           if len(links) else {}).fillna(0).astype(int)
+    set_tbl = sets.drop(columns=["file_date"]).copy()
+    set_tbl["set_no"] = set_tbl["set_no"].astype("Int64")
+    link_tbl = links.rename(columns={"title": "slide_title", "set_row": "set_id"}).drop(
+        columns=["owner_name", "test_date", "set_no", "sample_name", "temperature_c", "pressure_mpa"], errors="ignore")
+    for name, df in (("slide_decks", deck_tbl), ("slide_sets", set_tbl), ("slide_test_links", link_tbl)):
+        df.to_parquet(out / f"{name}.parquet", index=False)
+    n_db = attach_to_db(project) if write_db else 0
+    if n_db and (project / "db" / "network.html").exists():
+        try:  # refresh slide references shown in the design network
+            from .design_network import build_network
+            build_network(project)
+        except Exception as e:  # the report is still valid without the network refresh
+            log(f"network refresh skipped: {e}")
+
+    # --- summary
+    conf = cm["confidence"].value_counts() if len(cm) else pd.Series(dtype=int)
+    summ = [("슬라이드 루트", " ; ".join(roots))]
+    for team, g in S.groupby("team"):
+        summ.append((f"[{team}] 덱 / 슬라이드 / Set 언급", f"{g['file_path'].nunique()} / {len(g)} / {int(g['n_sets'].sum())}"))
+    summ += [
+        ("파싱 오류 덱", len(errors)), ("실험 DB test 수", len(tests)),
+        ("(C) 장표 연결 test 수", len(cm)), ("  - verified (장표 수치 = DB 수치)", int(conf.get("verified", 0))),
+        ("  - matched (높음)", int(conf.get("matched", 0))), ("  - candidate (검토)", int(conf.get("candidate", 0))),
+        ("(B) 장표 없는 test 수", len(tb)), ("  - 담당자 이름이 장표에 전혀 없음", int((~tb["owner_in_slides"]).sum())),
+        ("(A) 데이터 없는 실험성 슬라이드 수", len(sa)), ("(A') 결과수치 있는데 test 미연결 Set 언급", len(ss)),
+        ("수치 대조 링크 (일치/불일치 포함)", len(numcmp)), ("조건 충돌 링크", len(conflicts)),
+        ("research.sqlite3 기록 행", n_db), ("담당자 매칭 규칙", "이름 완전일치만 (별칭 없음)"),
+        ("임계값 matched / candidate", f"{MATCHED_THR} / {CANDIDATE_THR}"), ("소요(초)", round(time.time() - t0, 1))]
+    summ = pd.DataFrame(summ, columns=["항목", "값"])
+    tb_owner = tests.set_index("test_key")["owner_base"].replace("", "(미상)")
+    by_owner = pd.concat([
+        tb["test_key"].map(tb_owner).value_counts().rename("B: 장표 없는 test"),
+        sa.groupby("slide_owner").size().rename("A: 데이터 없는 슬라이드"),
+        (cm["test_key"].map(tb_owner).value_counts() if len(cm) else pd.Series(dtype=int)).rename("C: 연결 test"),
+        (cm.loc[cm["confidence"] == "verified", "test_key"].map(tb_owner).value_counts() if len(cm)
+         else pd.Series(dtype=int)).rename("C 중 verified")], axis=1).fillna(0).astype(int).rename_axis("담당자").reset_index()
+    by_owner["담당자"] = by_owner["담당자"].replace("", "(작성자 미상)")
+
     def w(df, name):
         df.to_csv(out / name, index=False, encoding="utf-8-sig")
     w(links, "slide_links.csv"); w(sa, "slides_without_data.csv"); w(tb, "tests_without_slides.csv")
-    w(cm, "matched_designs.csv"); w(deck_sum, "decks_without_data.csv")
-    ren = {"test_key": "test_key", "owner_name": "담당자", "test_date": "시험일", "test_type": "시험종류", "test_type_inferred": "추정종류",
+    w(cm, "matched_designs.csv"); w(deck_sum, "decks_without_data.csv"); w(ss, "set_mentions_without_data.csv")
+    ren = {"owner_name": "담당자", "test_date": "시험일", "test_type": "시험종류", "test_type_inferred": "추정종류",
            "sample_name": "샘플", "material": "소재", "loading_tag": "로딩(태그)", "loading_raw": "로딩(원본)", "process": "공정",
            "pressure_mpa": "압력(MPa)", "temperature_c": "온도(C)", "cell_format": "셀포맷", "supplier": "공급처",
-           "design_id": "설계ID", "design_label": "설계라벨", "deck_path": "장표파일", "slide_pages": "페이지", "slide_title": "장표제목",
-           "slide_file_date": "장표일자", "n_decks": "장표수", "other_decks": "기타장표", "evidence": "근거", "confidence": "신뢰도",
-           "score": "점수", "slide_design_keywords": "장표 설계키워드", "slide_design_text": "장표 설계문구", "n_channels": "채널수",
-           "anomaly": "이상", "owner_folder": "폴더(담당)", "file_name": "파일명", "file_date": "파일일자", "page": "페이지",
-           "design_tokens": "설계토큰", "owner_tests_in_db": "담당자 DB test수", "file_path": "경로", "slide_text_snippet": "본문발췌",
-           "n_result_words": "결과어수", "has_table": "표유무", "tags": "태그", "set_no": "Set", "requester_code": "사번",
-           "context_path": "폴더경로", "test_name": "시험명", "owner_has_slide_folder": "담당자 장표폴더 있음",
-           "n_slides_without_data": "데이터無 슬라이드수", "pages": "페이지들", "titles": "제목들", "n_slides_total": "전체 슬라이드수",
-           "no_owner_data": "담당자 DB 데이터0", "token_cov": "토큰커버리지", "date_score": "날짜점수", "slide_no": "페이지",
-           "title": "장표제목"}
+           "design_id": "설계ID", "design_label": "설계라벨", "slide_pages": "페이지", "title": "장표제목", "slide_title": "장표제목",
+           "file_date": "장표일자", "n_decks": "장표수", "other_decks": "기타장표", "evidence": "근거", "confidence": "신뢰도",
+           "score": "점수", "slide_score": "슬라이드점수", "set_bonus": "Set가점", "slide_design_keywords": "장표 설계키워드",
+           "slide_design_text": "장표 설계문구", "n_channels": "채널수", "anomaly": "이상", "team": "팀", "slide_owner": "장표담당",
+           "owner_folder": "폴더", "file_name": "파일명", "page": "페이지", "slide_no": "페이지", "design_tokens": "설계토큰",
+           "owner_tests_in_db": "담당자 DB test수", "file_path": "경로", "slide_text_snippet": "본문발췌", "n_result_words": "결과어수",
+           "has_table": "표유무", "tags": "태그", "set_no": "Set", "requester_code": "사번", "context_path": "폴더경로",
+           "test_name": "시험명", "owner_in_slides": "담당자 이름이 장표에 있음", "n_slides_without_data": "데이터無 슬라이드수",
+           "pages": "페이지들", "titles": "제목들", "n_slides_total": "전체 슬라이드수", "no_owner_data": "담당자 DB 데이터0",
+           "set_label": "장표 Set 표기", "set_attrs": "장표 설계/조건", "set_metrics": "장표 결과수치", "metric_check": "수치대조(장표/DB)",
+           "condition_conflict": "조건충돌", "n_agree": "일치수", "n_disagree": "불일치수", "n_sets": "Set언급수", "dates": "날짜",
+           "attrs": "장표 설계/조건", "metrics": "장표 결과수치", "rank": "순위", "set_row": "SetID", "n_tests": "test수",
+           "n_verified": "verified수", "owners": "담당자들", "decks": "장표", "set_labels": "장표 Set 표기들", "slide_attrs": "장표 설계/조건"}
     xl = out / "slide_link_report.xlsx"
-    with pd.ExcelWriter(xl, engine="openpyxl") as xw:
-        sheets = [("요약", summ), ("담당자별", by_owner), ("장표O_데이터X", sa), ("장표O_데이터X(덱요약)", deck_sum),
-                  ("데이터O_장표X", tb), ("둘다(설계)", cm), ("링크후보", links)]
+    sheets = [("요약", summ), ("담당자별", by_owner), ("장표O_데이터X", sa), ("장표Set_데이터X", ss),
+              ("장표O_데이터X(덱요약)", deck_sum), ("데이터O_장표X", tb), ("둘다(설계)", cm), ("설계별장표", dz),
+              ("수치대조", numcmp), ("조건충돌", conflicts), ("링크후보", links)]
+    with pd.ExcelWriter(xl, engine="xlsxwriter") as xw:
         for name, d in sheets:
             d = d.rename(columns=ren) if name not in ("요약", "담당자별") else d
             d = d.map(lambda v: v[:32000] if isinstance(v, str) else v)
             d.to_excel(xw, sheet_name=name, index=False)
             ws = xw.sheets[name]
-            ws.freeze_panes = "A2"
-            for ci, col in enumerate(d.columns, 1):
-                q = d.iloc[:, ci - 1].astype(str).str.len().quantile(0.9) if len(d) else 8
-                width = min(60, max(8, int(q) + 2 if q == q else 8, len(str(col)) + 2))
-                ws.column_dimensions[ws.cell(1, ci).column_letter].width = width
-    res = dict(out=str(out), decks=n_decks, slides=len(S), errors=errors, summary=summ, by_owner=by_owner,
-               slides_without_data=sa, deck_summary=deck_sum, tests_without_slides=tb, matched=cm, links=links,
-               seconds=time.time() - t0)
+            ws.freeze_panes(1, 0)
+            for ci, col in enumerate(d.columns):
+                q = d.iloc[:, ci].astype(str).str.len().quantile(0.9) if len(d) else 8
+                ws.set_column(ci, ci, min(60, max(8, int(q) + 2 if q == q else 8, len(str(col)) + 2)))
+    res = dict(out=str(out), decks=n_decks, slides=len(S), set_mentions=len(sets), errors=errors, summary=summ,
+               by_owner=by_owner, slides_without_data=sa, sets_without_data=ss, deck_summary=deck_sum,
+               tests_without_slides=tb, matched=cm, designs=dz, links=links, seconds=time.time() - t0)
     log(summ.to_string(index=False))
     return res
+
+
+DEFAULT_SLIDE_ROOTS = [r"d:\2026\장표\2팀", r"d:\2026\장표\4팀"]
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Link slides to cycler tests")
     ap.add_argument("--project", default=str(Path(__file__).resolve().parents[1] / "projects" / "PNE_initial"))
-    ap.add_argument("--slides", default=r"d:\2026\장표\2팀")
+    ap.add_argument("--slides", nargs="+", default=DEFAULT_SLIDE_ROOTS, help="one or more team slide folders")
     ap.add_argument("--workers", type=int, default=8)
     a = ap.parse_args(argv)
     build_slide_link(a.project, a.slides, workers=a.workers)

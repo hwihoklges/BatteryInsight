@@ -114,7 +114,7 @@ def main(argv=None):
             parser.add_argument("--workers", type=int, default=8)
             parser.add_argument("--no-network", action="store_true")
             parser.add_argument("--force", action="store_true")
-            parser.add_argument("--slides", type=Path)
+            parser.add_argument("--slides", type=Path, nargs="+")
             parser.add_argument("--profile-every", type=int, default=10)
             args = parser.parse_args(cleaned)
             from . import library
@@ -221,11 +221,13 @@ def main(argv=None):
                 elif args.command == "slide-link":
                     from .slide_link import build_slide_link
                     if not args.slides:
-                        raise ValueError("--slides <장표 폴더>가 필요합니다")
+                        raise ValueError("--slides <장표 폴더> [<장표 폴더> ...]가 필요합니다")
                     full = build_slide_link(args.project, args.slides, workers=args.workers,
                                             log=lambda message: print(message, file=sys.stderr) if sys.stderr else None)
+                    conf = full["matched"]["confidence"].value_counts().to_dict() if len(full["matched"]) else {}
                     result = {"output": str(Path(full["out"]) / "slide_link_report.xlsx"), "decks": full["decks"],
-                              "slides": full["slides"], "matched_tests": len(full["matched"]),
+                              "slides": full["slides"], "set_mentions": full["set_mentions"],
+                              "linked_tests": len(full["matched"]), "linked_by_confidence": conf,
                               "tests_without_slides": len(full["tests_without_slides"]),
                               "slides_without_data": len(full["slides_without_data"]),
                               "seconds": round(full["seconds"], 1)}

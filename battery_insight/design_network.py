@@ -208,6 +208,23 @@ def _metric_key(metric_id, window) -> str:
 # --------------------------------------------------------------------------- #
 # Core build
 # --------------------------------------------------------------------------- #
+def _design_slides(conn, per_design=6) -> dict:
+    """design_id -> best slide references (from slide_link's v_test_slides view, if present)."""
+    try:
+        rows = conn.execute(
+            "SELECT design_id, file_name, slide_no, set_label, confidence, max(score) AS s FROM v_test_slides "
+            "WHERE design_id IS NOT NULL AND confidence IN ('verified','matched') "
+            "GROUP BY design_id, file_name, slide_no ORDER BY design_id, (confidence='verified') DESC, s DESC").fetchall()
+    except sqlite3.Error:
+        return {}
+    out = {}
+    for did, fname, sno, label, conf, _ in rows:
+        lst = out.setdefault(did, [])
+        if len(lst) < per_design:
+            lst.append({"file": fname, "slide": sno, "set": label or "", "confidence": conf})
+    return out
+
+
 def _collect(conn, cohort_filter=None, design_threshold=0.3):
     designs = _read_table(conn, "designs")
     metric_defs = _read_table(conn, "metric_defs")
@@ -320,6 +337,9 @@ def _collect(conn, cohort_filter=None, design_threshold=0.3):
     # keep only designs that appear somewhere (node set) -- but keep all designs
     # so isolated nodes still show.
     node_list = sorted(design_nodes.values(), key=lambda d: d["design_id"])
+    slides_by_design = _design_slides(conn)
+    for n in node_list:
+        n["slides"] = slides_by_design.get(n["design_id"], [])
 
     # ---- design edges (global, structural) ----
     design_edges = []
@@ -714,6 +734,14 @@ function renderSelection(){
     info.innerHTML='<b>선택:</b> '+selected.map(id=>{
       const d=byId[id]; return `${d.label} ${badge(d.status)} <span class="muted">(n_cells=${d.n_cells})</span>`;
     }).join(" · ");
+    const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+    const refs=selected.map(id=>{
+      const sl=byId[id].slides||[];
+      if(!sl.length) return "";
+      return `<div class="muted" style="margin-top:4px">📄 ${esc(byId[id].label)} 장표: `+
+        sl.map(s=>`${esc(s.file)} p${s.slide}${s.set?" ("+esc(s.set)+")":""}${s.confidence==="verified"?" ✓":""}`).join(" · ")+"</div>";
+    }).join("");
+    info.innerHTML+=refs;
   }
   renderRadar();
   renderPair();

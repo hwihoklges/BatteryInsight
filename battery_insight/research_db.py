@@ -464,6 +464,8 @@ def build_research_db(project) -> dict:
              json.dumps(counts, ensure_ascii=False)),
         )
         conn.commit()
+        from .slide_link import attach_to_db
+        attach_to_db(project, conn)  # keep slide <-> test links across rebuilds (no-op without slides/)
     finally:
         conn.close()
     os.replace(tmp, final)

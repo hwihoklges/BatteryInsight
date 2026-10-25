@@ -4,14 +4,19 @@
 
 ```powershell
 python -m battery_insight db-build --project D:/BIProject --profile-every 10      # 0이면 프로파일 단계 끔
-python -m battery_insight slide-link --project D:/BIProject --slides "D:/2026/장표/2팀"
+python -m battery_insight slide-link --project D:/BIProject --slides "D:/2026/장표/2팀" "D:/2026/장표/4팀"
 ```
 
 - **사이클 프로파일** `db/cycle_profiles.parquet`: 1·2·3 사이클, N(기본 10)번째마다, 첫/마지막 full 사이클, 방전시간이 중앙값의 1.5배 이상이거나 1/1.5배 이하인 특수 사이클(RPT 등)만 골라 충전·방전 V–Q 곡선을 128점(q/q_total 격자, float32, 0.1 mV)으로 저장합니다. 2,932 파일 → 89,385 곡선 21 MB(every=1이면 약 128 MB, 50이면 약 12 MB). 설계 간 곡선·dQ/dV 비교에 원본 4 GB를 열 필요가 없습니다(`cycle_profiles.load_profiles`, `dqdv`).
 - **원본 Parquet**(`sources/`, 3.98 GB, 6.4 B/행)은 무손실 보관본입니다. float32 재인코딩을 시험했지만 이미 zstd-19 + byte-stream-split이라 줄지 않았습니다(6.64 → 6.82 B/행). 더 줄이려면 원본을 별도 보관 위치로 옮기는 방법뿐이며, 지표·DB·프로파일은 `derived/`+`db/`(약 140 MB)만으로 동작합니다.
 - **빌드 효율**: 사이드카 메타데이터를 디렉터리별 `_index.json`에 캐시해 NAS에서 파일 2,932개의 footer를 매번 읽던 작업(약 25 s × 2단계)을 scandir 한 번(0.5 s)으로 줄였습니다. `cycles_summary`에 `is_full` 열을 넣어 run_metrics가 사이클 사이드카를 다시 읽지 않고, run 단위 계산은 병렬로 처리합니다(17 → 10 s). metric_validation은 라벨 없는 파일을 열지 않습니다. research_db는 집계를 벡터화하고 xlsx에서 큰 행 단위 표를 뺐습니다(16 → 8.7 s). 전체 재계산(`--force`)은 약 160 s에서 약 57 s로, 변경이 없으면 0.2 s입니다.
 - **수정**: metric_validation이 단위 계수 순서를 바꿔 쓰던 문제(용량이 mAh 값인데 Ah로 표기)를 고쳤습니다. 미사용 `derived_steps.load_all_steps`와 고아 파일 `derived/steps_all.parquet`(68.6 MB)를 지웠습니다.
-- **장표 연결** (`slides/slide_link_report.xlsx`): 장표 폴더의 pptx 슬라이드 XML만 읽어(미디어 제외) 슬라이드 색인을 캐시하고, 담당자·날짜·샘플/설계 토큰(IDF 가중)으로 실험 DB와 매칭합니다. 시트: 요약 / 담당자별 / 장표O_데이터X / 데이터O_장표X / 둘다(설계) / 링크후보. `matched`(높음)와 `candidate`(검토 필요)를 구분합니다. 담당자 별칭은 `slide_link.OWNER_ALIAS`에서 지정합니다.
+- **장표 연결** (`slides/slide_link_report.xlsx`): 여러 팀 폴더(`--slides` 여러 개, `팀` 열)의 pptx 슬라이드 XML만 읽어(미디어 제외) 색인을 캐시합니다.
+  - **장표 내부 정보 추출** (`slide_facts.extract_sets`): 표·본문의 `Set1: SJ1300A_65_오창제조(7/8)` 같은 Set 표기를 Set 번호·라벨 토큰·날짜·설계/조건(PTFE wt, 기공도, 비율, 로딩, 압력, 온도, 소재)·결과수치(1st 충/방전 mAh/g, ICE, N사이클 방전/유지율/CE, 율특성, DCIR)로 구조화합니다. 행 방향 표, 전치 표(Set이 열), `Set# | 1 | 2` 표, 한 표 안의 여러 블록, 반복 셀(평균)을 처리합니다.
+  - **매칭**: 슬라이드 단위(담당자·날짜·IDF 토큰) 점수에 Set 단위 근거(Set 번호 일치, 라벨 토큰, Set에 적힌 투입일)를 더하고, 장표 결과수치를 DB 사이클 데이터(`run_cycles`)와 대조합니다(ICE ±0.7 %p, N사이클 유지율 ±2 %p; CE는 99 %대로 변별력이 없어 표시만). Set이 식별되고 수치가 맞으면 `verified`, 아니면 `matched`/`candidate`입니다. 타인 폴더 장표는 자동 verified 하지 않습니다.
+  - **담당자**: 이름이 다르면 다른 사람입니다(별칭 없음). 근거는 담당자 폴더·파일명에 적힌 이름(강), 작성자/마지막 수정자·본문 이름(약)입니다.
+  - **DB 연결**: `slides/slide_decks|slide_sets|slide_test_links.parquet`를 `research.sqlite3`에 같은 이름의 표로 넣고 `v_test_slides` 뷰(시험·설계·장표 Set·수치대조)를 만듭니다. `db-build`로 DB를 다시 만들어도 유지되며, 설계 네트워크에서 노드를 선택하면 연결된 장표 페이지가 보입니다.
+  - 시트: 요약 / 담당자별 / 장표O_데이터X / 장표Set_데이터X / 덱요약 / 데이터O_장표X / 둘다(설계) / 설계별장표 / 수치대조 / 조건충돌 / 링크후보.
 
 ## 3.5.0: 설계 비교 DB와 설계 거미줄
 
