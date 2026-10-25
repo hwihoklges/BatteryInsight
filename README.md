@@ -41,6 +41,7 @@ python -m battery_insight network --project D:/BIProject           # db/network.
 - 설계 확정: `design_candidates.csv`의 행을 `design_map.csv`에 복사하고 `design_id`/`design_label`을 채우면 다음 빌드부터 확정 설계로 묶입니다(`match_type`: test_key > series_key > candidate > tags). `design_map.csv`는 빌드가 덮어쓰지 않습니다.
 - 셀 확정: `dx/dx_files.csv`의 `physical_cell_id`를 채우면 같은 셀의 반복 run이 한 표본(중앙값)으로 묶입니다. 비어 있으면 run 단위 *provisional* 셀입니다.
 - 이상 시험(`dx_tests.csv`의 `anomaly`: 채널 이상 등)은 관측값은 보존하되 셀·설계 요약에서 제외합니다.
+- **불량 셀 자동 제외** (`cell_qc.py`, `db-build`의 `cell_qc` 단계): 각 채널을 같은 test의 *다른* 채널 중앙값과 비교합니다(무게가 셀마다 달라 Ah 절대값은 판정에 쓰지 않음). `defect` 규칙: 다른 채널은 방전되는데 충전만 됨(dead), ICE가 5 %p 이상 낮음, CE 중앙값이 2 %p 이상 낮음(같은 프로토콜끼리), 80 % 도달 사이클이 다른 채널의 절반 미만(다른 채널 20사이클 이상). 첫 방전 용량 0.85배 미만/1.15배 초과는 `suspect`만 줍니다. 비교 채널이 1개뿐이면 차이가 2배(ICE 10 %p 등)여야 `defect`, 3채널 이상 test에서 절반 이상이 같은 규칙에 걸리면 어느 쪽이 정상인지 모르므로 `suspect`로 보류합니다. 1채널 test는 ICE 50 % 미만만 `suspect`입니다. 결과는 `db/run_qc.parquet`, DB `run_qc` 표, `runs.qc_status`/`qc_reasons`에 들어가고, `defect` run은 셀·설계 요약과 장표 수치 대조(test 중앙값)에서 빠집니다(관측값은 보존). 기준은 `<project>/criteria.json`의 `cell_qc`(첫 빌드에 기본값으로 생성), 사람 판정은 `dx/cell_qc_override.csv`(`run_id`에 run 또는 test_key, `decision` keep/exclude, `note`)가 자동 판정보다 우선합니다. PNE_initial: 1,342 run 중 defect 46(41 test), suspect 66.
 - 데스크톱 **지표·관계망·분석** 탭: *설계 비교 DB 갱신*, *설계 관계망 열기*, *설계 확정표 열기*.
 - CYC → Parquet 변환기는 별도 패키지 [`cyc2parquet`](../cyc2parquet)로 분리했습니다(`pip install -e ../cyc2parquet`). BatteryInsight는 이를 의존성으로 사용합니다.
 

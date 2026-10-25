@@ -254,6 +254,10 @@ def build_research_db(project) -> dict:
     # Module A outputs (optional)
     run_profile_df = _read_parquet(dbdir / "run_profile.parquet")
     run_metrics_df = _read_parquet(dbdir / "run_metrics.parquet")
+    run_qc_df = _read_parquet(dbdir / "run_qc.parquet")
+    qc_map = {} if run_qc_df is None else {
+        _s(r.run_id): (_s(r.qc_status), _s(r.qc_reasons))
+        for r in run_qc_df[["run_id", "qc_status", "qc_reasons"]].itertuples(index=False)}
     metric_defs = _load_metric_defs()
 
     # run_profile lookup: run_id -> (c_rate_class, v_window, quality)
@@ -381,12 +385,14 @@ def build_research_db(project) -> dict:
 
         c_rate_class, v_window, quality = profile_map.get(run_id, ("", "", "unknown"))
         cohort_key = _cohort_key(trow["test_type"], trow["temperature_label"], c_rate_class, v_window)
+        qc_status, qc_reasons = qc_map.get(run_id, ("", ""))
         runs[run_id] = {
             "run_id": run_id, "test_key": test_key, "channel": channel,
             "cell_id": cell_id, "design_id": design_id, "cohort_key": cohort_key,
             "n_datasets": order, "quality": quality,
             "test_type": trow["test_type"], "temperature_label": trow["temperature_label"],
             "c_rate_class": c_rate_class, "v_window": v_window, "anomaly": trow["anomaly"],
+            "qc_status": qc_status, "qc_reasons": qc_reasons,
         }
 
     # design n_cells / n_runs
@@ -441,6 +447,8 @@ def build_research_db(project) -> dict:
         "cohorts_ge2_designs": sum(1 for c in cohorts.values() if len(c["designs"]) >= 2),
         "excluded_files": skipped_excluded,
         "anomaly_runs": sum(1 for r in runs.values() if r["anomaly"]),
+        "qc_defect_runs": sum(1 for r in runs.values() if r["qc_status"] == "defect"),
+        "qc_suspect_runs": sum(1 for r in runs.values() if r["qc_status"] == "suspect"),
         "has_module_a": run_metrics_df is not None,
     }
 
@@ -454,6 +462,8 @@ def build_research_db(project) -> dict:
         _fill_tables(conn, design_catalog, cells, test_rows, runs, run_datasets,
                      run_profile_df, observations, cell_metrics, design_metrics,
                      metric_defs, cohorts)
+        if run_qc_df is not None:
+            run_qc_df.to_sql("run_qc", conn, if_exists="replace", index=False)
         inputs = {
             "dx_files": str(dx / "dx_files.csv"), "dx_tests": str(dx / "dx_tests.csv"),
             "run_metrics": run_metrics_df is not None, "run_profile": run_profile_df is not None,
@@ -494,12 +504,13 @@ def _aggregate(observations, runs, cells):
     rmap = pd.DataFrame([
         {"run_id": r["run_id"], "cell_id": r["cell_id"], "cohort_key": r["cohort_key"],
          "design_id": r["design_id"], "test_type": r["test_type"], "quality": r["quality"],
-         "anomaly": r.get("anomaly", "")}
+         "anomaly": r.get("anomaly", ""), "qc_status": r.get("qc_status", "")}
         for r in runs.values()
     ])
     obs = obs.merge(rmap, on="run_id", how="inner")
     obs = obs[obs["value"].notna()]
-    obs = obs[(obs["quality"] != "insufficient") & (obs["test_type"] != "unknown") & (obs["anomaly"] == "")]
+    obs = obs[(obs["quality"] != "insufficient") & (obs["test_type"] != "unknown") & (obs["anomaly"] == "")
+              & (obs["qc_status"] != "defect")]
     if obs.empty:
         return [], []
 
@@ -546,7 +557,8 @@ def _write_schema(conn):
             protocol TEXT, rpt_stage TEXT, owner TEXT, set_no TEXT, batch TEXT,
             sample_name TEXT, tags TEXT, design_id TEXT, anomaly TEXT, candidate_id TEXT);
         CREATE TABLE runs(run_id TEXT PRIMARY KEY, test_key TEXT, channel TEXT, cell_id TEXT,
-            design_id TEXT, cohort_key TEXT, n_datasets INTEGER, quality TEXT);
+            design_id TEXT, cohort_key TEXT, n_datasets INTEGER, quality TEXT,
+            qc_status TEXT, qc_reasons TEXT);
         CREATE TABLE run_datasets(run_id TEXT, dataset_id TEXT, fragment_order INTEGER, sha256 TEXT);
         CREATE TABLE observations(run_id TEXT, metric_id TEXT, window TEXT, value REAL,
             unit TEXT, censored INTEGER, quality TEXT, method TEXT);
@@ -595,9 +607,10 @@ def _fill_tables(conn, designs, cells, tests, runs, run_datasets, run_profile_df
           t["tags"], t["design_id"], t.get("anomaly", ""), t.get("candidate_id", "")) for t in tests.values()])
 
     _write_many(conn,
-        "INSERT INTO runs VALUES(?,?,?,?,?,?,?,?)",
+        "INSERT INTO runs VALUES(?,?,?,?,?,?,?,?,?,?)",
         [(r["run_id"], r["test_key"], r["channel"], r["cell_id"], r["design_id"],
-          r["cohort_key"], r["n_datasets"], r["quality"]) for r in runs.values()])
+          r["cohort_key"], r["n_datasets"], r["quality"], r.get("qc_status", ""), r.get("qc_reasons", ""))
+         for r in runs.values()])
 
     _write_many(conn,
         "INSERT INTO run_datasets VALUES(?,?,?,?)",

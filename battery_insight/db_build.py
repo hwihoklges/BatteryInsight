@@ -1,6 +1,6 @@
 """One-command, incremental build of the design comparison database.
 
-derived steps -> derived cycles -> cycle profiles -> run metrics -> validation -> research DB -> design network.
+derived steps -> derived cycles -> cycle profiles -> run metrics -> cell QC -> validation -> research DB -> design network.
 Each stage is skipped when its input fingerprint (file size/mtime of inputs and
 the stage's own source code) matches the previous successful build, so a
 no-change rebuild touches only a handful of files on the NAS.
@@ -82,11 +82,15 @@ def build_database(project, *, workers=8, network=True, force=False, profile_eve
               [library_db, summary, profiles, f"every={profile_every}"], [profiles], [cycle_profiles])  # setting is part of the key
     stage("run_metrics", lambda: run_metrics.build_run_metrics(project, workers=workers),
           [library_db, summary, dx / "dx_files.csv"], run_outputs, [run_metrics])
+    from . import cell_qc
+    qc_out = cell_qc.output_path(project)
+    stage("cell_qc", lambda: cell_qc.build_cell_qc(project),
+          [*run_outputs, project / cell_qc.CRITERIA_FILE, project / cell_qc.OVERRIDE_FILE], [qc_out], [cell_qc])
     from . import metric_validation
     stage("validation", lambda: _validation_brief(metric_validation.validate_metrics(project, workers=workers)),
           [library_db, steps_dir], [db / "metric_validation.json"], [metric_validation, derived_cycles])
     stage("research_db", lambda: research_db.build_research_db(project),
-          [dx / "dx_files.csv", dx / "dx_tests.csv", db / "design_map.csv", *run_outputs[:2],
+          [dx / "dx_files.csv", dx / "dx_tests.csv", db / "design_map.csv", *run_outputs[:2], qc_out,
            project / "slides" / "slide_test_links.parquet"],
           [db / "research.sqlite3"], [research_db, run_metrics])
     if network:

@@ -194,3 +194,21 @@ def test_anomaly_runs_excluded_from_aggregates(tmp_path):
     assert cells == {"pc:CELL1"}
     gaps = pd.read_csv(Path(project) / "db" / "identity_gaps.csv", dtype=str)
     assert gaps.gaps.str.contains("anomaly:channel_fault").sum() == 1
+
+
+def test_defect_runs_excluded_from_aggregates(tmp_path):
+    project = _base_project(tmp_path, with_metrics=True)
+    pd.DataFrame([dict(run_id="A:ch2", qc_status="defect", qc_reasons="low_ice: ICE 40%"),
+                  dict(run_id="B:ch3", qc_status="suspect", qc_reasons="low_capacity")]
+                 ).to_parquet(Path(project) / "db" / "run_qc.parquet")
+    summary = rdb.build_research_db(project)
+    assert summary["qc_defect_runs"] == 1 and summary["qc_suspect_runs"] == 1
+    conn = rdb.connect_ro(project)
+    try:
+        cm = conn.execute("SELECT value,n_runs FROM cell_metrics WHERE cell_id='pc:CELL1'").fetchone()
+        runs = {r["run_id"]: r["qc_status"] for r in conn.execute("SELECT run_id,qc_status FROM runs")}
+        n_qc = conn.execute("SELECT COUNT(*) FROM run_qc").fetchone()[0]
+    finally:
+        conn.close()
+    assert cm["n_runs"] == 1 and cm["value"] == pytest.approx(10.0)   # defect A:ch2 (20) dropped
+    assert runs["A:ch2"] == "defect" and runs["B:ch3"] == "suspect" and n_qc == 2

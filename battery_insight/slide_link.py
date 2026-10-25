@@ -476,13 +476,22 @@ ICE_LOOSE = 0.7
 
 
 def test_cycle_facts(project) -> dict:
-    """test_key -> (discharge_ah[cycle], charge_ah[cycle]) median over the test's runs (cycle 1 = first)."""
+    """test_key -> (discharge_ah[cycle], charge_ah[cycle]) median over the test's runs (cycle 1 = first).
+
+    Runs judged ``defect`` by cell_qc are left out unless every run of the test is.
+    """
     p = Path(project) / "db" / "run_cycles.parquet"
     if not p.exists():
         return {}
     c = pd.read_parquet(p, columns=["run_id", "cycle_index", "discharge_capacity_ah", "charge_capacity_ah"])
     c = c[~c["run_id"].str.startswith("ds:")]
     c["test_key"] = c["run_id"].str.split(":", n=1).str[0]
+    from .cell_qc import load_status
+    bad = {rid for rid, (status, _) in load_status(project).items() if status == "defect"}
+    if bad:
+        is_bad = c["run_id"].isin(bad)
+        all_bad = is_bad.groupby(c["test_key"]).transform("all")
+        c = c[~is_bad | all_bad]
     g = c.groupby(["test_key", "cycle_index"], sort=True)[["discharge_capacity_ah", "charge_capacity_ah"]].median()
     out = {}
     for k, d in g.groupby(level=0, sort=False):
