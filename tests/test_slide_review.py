@@ -6,6 +6,7 @@ from pptx.util import Inches
 
 from battery_insight import slide_link as sl
 from battery_insight import slide_review as sr
+from battery_insight.slide_context import COLS, data_only_context
 
 
 def _table_deck(path, rows, title="결과"):
@@ -77,6 +78,8 @@ def test_review_overrides_links_and_writes_slide_facts(tmp_path):
     assert "c3" not in set(links["test_key"])
     tb = res["tests_without_slides"].set_index("test_key")
     assert tb.loc["c3", "review_status"] == "no_slide"
+    assert tb.loc["c3", "ctx_reason"] == "사이클 데이터 없음"
+    assert "b2" not in set(res["context"]["test_key"])
     # unresolved review row: reported, and the test keeps its automatic links
     assert list(res["review_unresolved"]["test_key"]) == ["d4"]
     assert not res["review"].set_index("test_key").loc["d4", "resolved"]
@@ -107,6 +110,8 @@ def test_review_overrides_links_and_writes_slide_facts(tmp_path):
         assert "D2" in set(res["design_facts"]["design_id"])
         assert c.execute("select count(*) from slide_link_review").fetchone()[0] == 3
         assert c.execute("select review_status from v_test_slides where test_key='b2'").fetchone()[0] == "link"
+        assert c.execute("select ctx_reason from v_test_slide_facts where test_key='c3'").fetchone()[0] == "사이클 데이터 없음"
+        assert c.execute("select ctx_reason from v_test_slide_facts where test_key='b2'").fetchone()[0] is None
         fam = c.execute("select family_size, family_rank, file_name from slide_decks order by family_rank").fetchall()
         assert [r[:2] for r in fam] == [(2, 1), (2, 2)] and fam[0][2] == "260725 ZQ 평가_v2.pptx"
     finally:
@@ -135,3 +140,59 @@ def test_review_status_priority_and_load(tmp_path):
     assert set(r["test_key"]) == {"t", "u"}             # unknown decisions are dropped
     st = sr.review_status(r)
     assert st["t"] == "link" and st["u"] == "no_slide"
+
+
+def test_data_only_context_reasons():
+    def t(key, date, owner="갑", sample="Set1", **kw):
+        return dict(test_key=key, owner_base=owner, test_date=date, sample_name=sample, test_name=f"x_{sample}", **kw)
+    tests = pd.DataFrame([
+        t("t1", "2026-05-01", tags="contract_batch:618"),                                   # reported
+        t("t2", "2026-05-01", sample="Set2 FM", test_type_final="Formation", tags="contract_batch:618"),
+        t("t3", "2025-10-01"),
+        t("t4", "2026-05-28"),
+        t("t5", "2026-05-01", owner="을"),
+        t("t6", "2026-05-01", sample="충방전기 비교 500mA vs 6A"),
+        t("t7", "2026-04-15"),
+        t("t8", "2026-04-16", sample="In situ XRD"),
+        t("t9", "2026-04-20"),
+        t("t10", "2026-05-10", owner=None, requester_code="07000664"),
+        *[t(k, "2026-06-10", owner="병") for k in ("t11", "t12", "t13")],
+        t("u1", "2026-07-01", owner="병", sample="건식음극 집전체평가 Ref 1um"),                # reported
+        t("u2", "2026-07-01", owner="병", sample="건식음극 전해질함량평가 SJ900 8대2"),
+        t("u3", "2026-07-01", owner="병", sample="건식음극 전해질함량평가 SJ900 6대4 re"),
+        t("u4", "2026-07-01", owner="병", sample="건식음극 집전체평가 Ref. 2um"),
+    ])
+    facts = pd.DataFrame(dict(test_key=tests["test_key"], link_status="no_slide", review_status="", review_note="",
+                              slide_file_name="", slide_no=None, slide_set_label="", slide_design="", db_ice_pct=90.0))
+    facts.loc[0, ["link_status", "slide_file_name", "slide_no", "slide_set_label"]] = ["confirmed", "260510 평가.pptx", 3, "Set1"]
+    facts.loc[facts["test_key"] == "u1", ["link_status", "slide_file_name", "slide_no"]] = ["confirmed", "260716 집전체.pptx", 2]
+    facts.loc[facts["test_key"] == "t7", "db_ice_pct"] = 99.5
+    decks = pd.DataFrame(dict(slide_owner=["갑", "갑", "병", "병"],
+                              file_date=["2026-03-01", "2026-06-01", "2026-01-01", "2026-12-01"]))
+    owners = pd.DataFrame([dict(requester_code="07000664", candidate_name="갑", suggestion="유력")])
+    design = {"t1": "D1", "t7": "D1", "t9": "D9"}
+    ncyc = {k: 100 for k in tests["test_key"]} | {"t2": 3, "t9": 0}
+
+    ctx = data_only_context(tests, facts, decks, owners, design, ncyc)
+    assert list(ctx.columns) == COLS
+    x = ctx.set_index("test_key")
+    assert "t1" not in x.index and "u1" not in x.index and len(x) == 15
+    assert x.loc["t2", "ctx_reason"] == "선행·점검 단계(본시험 장표 있음)"
+    assert x.loc["t2", "group_basis"] == "같은 도급 배치" and x.loc["t2", "sibling_slide"] == "260510 평가.pptx p3 Set1"
+    assert x.loc["t3", "ctx_reason"] == "장표 보관 이전 시험"
+    assert x.loc["t4", "ctx_reason"] == "미보고(최신 장표 이후)"
+    assert x.loc["t5", "ctx_reason"] == "담당자 장표 없음"
+    assert x.loc["t6", "ctx_reason"] == "장비·채널 점검"
+    assert x.loc["t7", "ctx_reason"] == "같은 실험군은 보고됨(이 시험 미표시)" and x.loc["t7", "group_basis"] == "같은 설계"
+    assert "화성 후 이어서" in x.loc["t7", "ctx_flags"] and "활성화 뒤" in x.loc["t7", "ctx_detail"]
+    assert x.loc["t8", "ctx_reason"] == "분석용 셀(XRD/DSC 등)"
+    assert x.loc["t9", "ctx_reason"] == "사이클 데이터 없음" and "사이클 데이터 없음" in x.loc["t9", "ctx_flags"]
+    assert (x.loc["t10", "owner_eff"], x.loc["t10", "owner_basis"], x.loc["t10", "ctx_reason"]) == ("갑", "사번 후보", "미상")
+    assert set(x.loc[["t11", "t12", "t13"], "ctx_reason"]) == {"실험군 전체 미보고"}
+    assert x.loc["t11", "n_group"] == 3 and x.loc["t11", "group_basis"] == "같은 투입일"
+    # one input day, two sub-experiments: only 집전체 was reported
+    assert x.loc["u4", "ctx_reason"] == "같은 실험군은 보고됨(이 시험 미표시)"
+    assert x.loc["u4", "sibling_slide"] == "260716 집전체.pptx p2" and x.loc["u4", "sibling_common"] == "ref,집전체평가"
+    assert set(x.loc[["u2", "u3"], "ctx_reason"]) == {"같은 투입분 다른 실험만 보고됨"}
+    assert x.loc["u2", "sibling_slide"] == "" and x.loc["u2", "n_group"] == 2
+    assert "다른 실험 1건만 보고: 260716 집전체.pptx p2" in x.loc["u2", "ctx_detail"]

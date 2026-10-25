@@ -703,7 +703,7 @@ def _tag_cols(tags):
 
 # ----------------------------------------------------------------------------- orchestration
 SLIDE_TABLES = ("slide_decks", "slide_sets", "slide_test_links")
-SLIDE_TABLES_OPT = ("test_slide_facts", "owner_candidates", "slide_link_review")
+SLIDE_TABLES_OPT = ("test_slide_facts", "owner_candidates", "slide_link_review", "test_context")
 
 
 def _slide_owner(folder, people):
@@ -780,14 +780,19 @@ def attach_to_db(project, conn=None) -> int:
             tcols = {r[1] for r in conn.execute("PRAGMA table_info(tests)")}
             tsel = "".join(f"t.{c}, " for c in ("owner", "test_date", "set_no", "sample_name", "test_type",
                                                  "temperature_c", "pressure_mpa") if c in tcols)
+            ctx = "test_context" in src
+            if ctx:
+                conn.execute("CREATE INDEX IF NOT EXISTS ix_tctx_test ON test_context(test_key)")
             conn.execute(f"""CREATE VIEW v_test_slide_facts AS
                 SELECT f.test_key, {tsel}coalesce(t.design_id, t.candidate_id) AS design_id, g.design_label,
                        f.review_status, f.link_status, f.slide_file_name, f.slide_no, f.slide_set_label, f.slide_date,
                        f.slide_design, f.slide_conditions, f.slide_chg1_mah_g, f.slide_dchg1_mah_g, f.slide_ice_pct,
                        f.db_dchg1_mah, f.db_ice_pct, f.implied_active_mass_mg, f.metric_check, f.slide_owner_guess,
+                       {'x.ctx_reason, x.ctx_detail, x.sibling_slide AS ctx_sibling_slide, ' if ctx else ''}
                        f.slide_attrs_json, f.slide_metrics_json
                 FROM test_slide_facts f JOIN tests t ON t.test_key = f.test_key
-                LEFT JOIN designs g ON g.design_id = coalesce(t.design_id, t.candidate_id)""")
+                LEFT JOIN designs g ON g.design_id = coalesce(t.design_id, t.candidate_id)
+                {'LEFT JOIN test_context x ON x.test_key = f.test_key' if ctx else ''}""")
         conn.commit()
         return n
     finally:
@@ -798,6 +803,7 @@ def attach_to_db(project, conn=None) -> int:
 def build_slide_link(project, slide_roots, *, workers: int = 8, log=print, write_db: bool = True) -> dict:
     """Index decks under ``slide_roots`` (one or more team folders), extract set mentions and link them to tests."""
     from .slide_facts import extract_sets
+    from .slide_context import data_only_context
     from .slide_review import (REVIEW_EXTRA, apply_review, build_test_facts, deck_families, evaluate_auto, load_review,
                                owner_candidates, review_status, slide_copies)
     t0 = time.time()
@@ -958,10 +964,15 @@ def build_slide_link(project, slide_roots, *, workers: int = 8, log=print, write
     tfacts = build_test_facts(links, review, tests, facts)
     deck_owner = dict(zip(deck_tbl["file_path"], deck_tbl["slide_owner"]))
     owners_sug = owner_candidates(review, links, tests, deck_owner)
+    ctx = data_only_context(tests, tfacts, deck_tbl, owners_sug, {k: v[0] for k, v in dinfo.items()},
+                            {k: len(v[0]) for k, v in facts.items()})
+    ctx_cols = ["test_key", "ctx_reason", "ctx_detail", "sibling_slide"]
+    tb = tb.merge(ctx[ctx_cols], on="test_key", how="left")
     rv_tbl = review.copy()
     rv_tbl["resolved"] = ~rv_tbl.index.isin(review_bad.index) | (rv_tbl["decision"] != "link")
     for name, df in (("slide_decks", deck_tbl), ("slide_sets", set_tbl), ("slide_test_links", link_tbl),
-                     ("test_slide_facts", tfacts), ("owner_candidates", owners_sug), ("slide_link_review", rv_tbl)):
+                     ("test_slide_facts", tfacts), ("owner_candidates", owners_sug), ("slide_link_review", rv_tbl),
+                     ("test_context", ctx)):
         df.to_parquet(out / f"{name}.parquet", index=False)
     n_db = attach_to_db(project) if write_db else 0
     dfacts = pd.DataFrame()
@@ -999,6 +1010,9 @@ def build_slide_link(project, slide_roots, *, workers: int = 8, log=print, write
         ("  - matched (높음)", int(conf.get("matched", 0))), ("  - candidate (검토)", int(conf.get("candidate", 0))),
         ("(B) 장표 없는 test 수", len(tb)), ("  - 검토 결과 장표 없음 확정", int((tb["review_status"] == "no_slide").sum())),
         ("  - 담당자 이름이 장표에 전혀 없음", int((~tb["owner_in_slides"]).sum())),
+        ("[데이터만 정황] 확실한 장표 연결 없는 test", len(ctx)),
+        *[(f"  - {k}", int(v)) for k, v in ctx["ctx_reason"].value_counts().items()],
+        ("  - 같은 실험군 장표 참조 있음", int((ctx["sibling_slide"] != "").sum())),
         ("(A) 데이터 없는 실험성 슬라이드 수 (동일 사본 1회)", len(sa)), ("(A') 결과수치 있는데 test 미연결 Set 언급", len(ss)),
         ("동일 내용 사본 슬라이드 (버전/복사)", int((~S["is_canonical"]).sum())),
         ("덱 버전군 (2개 이상 버전)", int((deck_tbl.drop_duplicates("family_id")["family_size"] > 1).sum())),
@@ -1028,7 +1042,7 @@ def build_slide_link(project, slide_roots, *, workers: int = 8, log=print, write
         df.to_csv(out / name, index=False, encoding="utf-8-sig")
     w(links, "slide_links.csv"); w(sa, "slides_without_data.csv"); w(tb, "tests_without_slides.csv")
     w(cm, "matched_designs.csv"); w(deck_sum, "decks_without_data.csv"); w(ss, "set_mentions_without_data.csv")
-    w(tfacts, "test_slide_facts.csv"); w(owners_sug, "owner_candidates.csv")
+    w(tfacts, "test_slide_facts.csv"); w(owners_sug, "owner_candidates.csv"); w(ctx, "test_context.csv")
     ren = {"owner_name": "담당자", "test_date": "시험일", "test_type": "시험종류", "test_type_inferred": "추정종류",
            "sample_name": "샘플", "material": "소재", "loading_tag": "로딩(태그)", "loading_raw": "로딩(원본)", "process": "공정",
            "pressure_mpa": "압력(MPa)", "temperature_c": "온도(C)", "cell_format": "셀포맷", "supplier": "공급처",
@@ -1062,10 +1076,22 @@ def build_slide_link(project, slide_roots, *, workers: int = 8, log=print, write
            "n_family_hit": "같은 보고서군 일치(버전·페이지 무관)", "n_tests_with_slides": "장표 연결 test수",
            "n_slide_designs": "장표 설계 문구 종류", "slide_designs": "장표 설계들", "attr_consensus_json": "장표 속성 합의(JSON)",
            "attr_conflicts": "속성 불일치", "slide_ice_pct_mean": "장표 ICE 평균(%)",
-           "slide_dchg1_mah_g_mean": "장표 1st방전 평균(mAh/g)", "implied_active_mass_mg_mean": "역산 활물질량 평균(mg)"}
+           "slide_dchg1_mah_g_mean": "장표 1st방전 평균(mAh/g)", "implied_active_mass_mg_mean": "역산 활물질량 평균(mg)",
+           "ctx_reason": "정황(추정)", "ctx_detail": "정황 근거", "role": "시험 역할", "report_timing": "보고 시점",
+           "owner_eff": "담당자(추정 포함)", "owner_basis": "담당자 근거", "owner_first_deck": "담당자 첫 장표",
+           "owner_last_deck": "담당자 최신 장표", "n_cycles": "사이클수", "group_basis": "실험군 기준", "n_group": "실험군 test수",
+           "n_group_reported": "실험군 보고 test수", "sibling_tests": "보고된 같은 실험군 test", "sibling_slide": "같은 실험군 장표",
+           "sibling_common": "샘플명 공통어",
+           "sibling_design": "같은 실험군 장표 설계", "design_n_reported": "같은 설계 보고 test수", "ice_dev_pct": "ICE 편차(%p)",
+           "ctx_flags": "데이터 신호"}
+    tinfo_x = tests[["test_key", "owner_name", "test_date", "sample_name", "test_type_final"]].rename(
+        columns={"test_type_final": "test_type"})
+    ctx_x = tinfo_x.merge(ctx, on="test_key").sort_values(["ctx_reason", "owner_name", "test_date"])
+    ctx_x["test_date"] = ctx_x["test_date"].dt.strftime("%Y-%m-%d")
     xl = out / "slide_link_report.xlsx"
     sheets = [("요약", summ), ("담당자별", by_owner), ("장표O_데이터X", sa), ("장표Set_데이터X", ss),
-              ("장표O_데이터X(덱요약)", deck_sum), ("데이터O_장표X", tb), ("둘다(설계)", cm), ("설계별장표", dz),
+              ("장표O_데이터X(덱요약)", deck_sum), ("데이터O_장표X", tb), ("데이터만 정황", ctx_x), ("둘다(설계)", cm),
+              ("설계별장표", dz),
               ("test별 장표사실", tfacts), ("설계별 장표사실", dfacts), ("검토결과", rv_tbl), ("자동매칭 검증", auto_eval),
               ("사번 담당자 후보", owners_sug),
               ("덱 버전군", deck_tbl[deck_tbl["family_size"] > 1].sort_values(["family_id", "family_rank"])),
@@ -1084,7 +1110,7 @@ def build_slide_link(project, slide_roots, *, workers: int = 8, log=print, write
                by_owner=by_owner, slides_without_data=sa, sets_without_data=ss, deck_summary=deck_sum,
                tests_without_slides=tb, matched=cm, designs=dz, links=links, test_facts=tfacts, review=rv_tbl,
                review_unresolved=review_bad, owner_candidates=owners_sug, deck_table=deck_tbl, auto_eval=auto_eval,
-               design_facts=dfacts,
+               design_facts=dfacts, context=ctx,
                seconds=time.time() - t0)
     log(summ.to_string(index=False))
     return res
