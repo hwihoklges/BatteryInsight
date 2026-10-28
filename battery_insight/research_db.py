@@ -17,6 +17,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -24,10 +25,41 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-CODE_VERSION = "research_db_v1"
+CODE_VERSION = "research_db_v2"
 
-DESIGN_KEYS = ("material", "process", "cell_format", "supplier", "geometry", "anode")
+# Design-relevant tag keys. ``material`` etc. come straight from dx tag parsing
+# (vocabulary.csv), which sometimes stuffs several distinct facets (binder
+# ratio, active-material ratio, composition %, plain wt%) under one source key
+# because the regex author only had one "material"/"cell_format" bucket handy.
+# ``_RECLASSIFY`` below splits those by *value shape* before grouping, so a
+# design node's fields read as separate, labelled facets instead of one
+# run-on string. It never touches the raw dx_tests.csv tags column; it only
+# changes how the already-parsed (key, value) pairs are bucketed in-memory.
+DESIGN_KEYS = ("material", "composition", "active_ratio", "binder_ratio", "ratio",
+               "process", "cell_format", "supplier", "geometry", "anode")
 CONDITION_KEYS = ("storage", "condition", "equipment")
+
+# (source_key, value_pattern, new_key). Checked in order; first match wins.
+_RECLASSIFY = [
+    ("material", re.compile(r"^binder_ratio:"), "binder_ratio"),
+    ("material", re.compile(r"^active_ratio:"), "active_ratio"),
+    ("material", re.compile(r"^composition:"), "composition"),
+    ("material", re.compile(r"^ratio:"), "ratio"),
+    ("material", re.compile(r"^wt:"), "wt"),
+    # "contract_batch:626" / "contract_cell" mark an outsourcing lot or cell
+    # number, not a physical cell format -- move them out of DESIGN_KEYS
+    # entirely (-> "contract") so they never fragment the design catalogue.
+    ("cell_format", re.compile(r"^contract_batch:"), "contract"),
+    ("cell_format", re.compile(r"^contract_cell$"), "contract"),
+]
+
+
+def _effective_tag(key, value):
+    for source_key, pattern, new_key in _RECLASSIFY:
+        if key == source_key and pattern.match(value):
+            stripped = pattern.sub("", value, count=1)
+            return new_key, (stripped or value)
+    return key, value
 
 # name-derived test type keywords (lowercase substring -> canonical type)
 NAME_TYPE_RULES = (
@@ -108,6 +140,16 @@ def _num(value):
         return None
 
 
+def _censor_flag(value):
+    """Keep missing/invalid censoring unknown rather than applying Python truthiness."""
+    text = _s(value).lower()
+    if text in ("true", "1", "1.0"):
+        return 1
+    if text in ("false", "0", "0.0"):
+        return 0
+    return None
+
+
 def _short_hash(tokens) -> str:
     joined = "|".join(sorted(tokens))
     return hashlib.sha1(joined.encode("utf-8")).hexdigest()[:10]
@@ -135,6 +177,7 @@ def _tag_fields(pairs):
     """Split pairs into design fields / condition fields and detect conflicts."""
     design, condition, allt = {}, {}, {}
     for key, value in pairs:
+        key, value = _effective_tag(key, value)
         allt.setdefault(key, [])
         if value not in allt[key]:
             allt[key].append(value)
@@ -385,7 +428,7 @@ def build_research_db(project) -> dict:
 
         c_rate_class, v_window, quality = profile_map.get(run_id, ("", "", "unknown"))
         cohort_key = _cohort_key(trow["test_type"], trow["temperature_label"], c_rate_class, v_window)
-        qc_status, qc_reasons = qc_map.get(run_id, ("", ""))
+        qc_status, qc_reasons = qc_map.get(run_id, ("not_assessed", ""))
         runs[run_id] = {
             "run_id": run_id, "test_key": test_key, "channel": channel,
             "cell_id": cell_id, "design_id": design_id, "cohort_key": cohort_key,
@@ -395,9 +438,15 @@ def build_research_db(project) -> dict:
             "qc_status": qc_status, "qc_reasons": qc_reasons,
         }
 
-    # design n_cells / n_runs
+    cell_designs = {}
+    for r in runs.values():
+        cell_designs.setdefault(r["cell_id"], set()).add(r["design_id"])
+    for cid, cell in cells.items():
+        cell["design_conflict"] = int(len(cell_designs[cid]) > 1)
+
+    # Count run-attributed cells without assigning repeats to the first test's design.
     for did, entry in design_catalog.items():
-        entry["n_cells"] = sum(1 for c in cells.values() if c["design_id"] == did)
+        entry["n_cells"] = len({r["cell_id"] for r in runs.values() if r["design_id"] == did})
         entry["n_runs"] = sum(1 for r in runs.values() if r["design_id"] == did)
 
     # --- observations + metrics ---------------------------------------------
@@ -411,7 +460,7 @@ def build_research_db(project) -> dict:
             observations.append({
                 "run_id": rid, "metric_id": _s(r.get("metric_id")),
                 "window": _s(r.get("window")), "value": _num(r.get("value")),
-                "unit": _s(r.get("unit")), "censored": int(bool(r.get("censored"))),
+                "unit": _s(r.get("unit")), "censored": _censor_flag(r.get("censored")),
                 "quality": _s(r.get("quality")), "method": _s(r.get("method")),
             })
 
@@ -438,6 +487,7 @@ def build_research_db(project) -> dict:
         "cells": len(cells),
         "cells_confirmed": sum(1 for c in cells.values() if c["status"] == "confirmed"),
         "cells_provisional": sum(1 for c in cells.values() if c["status"] == "provisional"),
+        "cells_design_conflict": sum(c["design_conflict"] for c in cells.values()),
         "runs": len(runs),
         "tests": len(test_rows),
         "observations": len(observations),
@@ -449,6 +499,7 @@ def build_research_db(project) -> dict:
         "anomaly_runs": sum(1 for r in runs.values() if r["anomaly"]),
         "qc_defect_runs": sum(1 for r in runs.values() if r["qc_status"] == "defect"),
         "qc_suspect_runs": sum(1 for r in runs.values() if r["qc_status"] == "suspect"),
+        "qc_not_assessed_runs": sum(1 for r in runs.values() if r["qc_status"] == "not_assessed"),
         "has_module_a": run_metrics_df is not None,
     }
 
@@ -495,7 +546,12 @@ def build_research_db(project) -> dict:
 
 
 def _aggregate(observations, runs, cells):
-    """cell_metrics (median over runs) and design_metrics (equal weight/cell)."""
+    """Equal weight per unambiguous cell; censoring never becomes observed life.
+
+    Mixed censored/observed repeats have no point estimate. Any censored cell
+    suppresses design point statistics (not a survival estimator). Bounds describe
+    censored follow-up only, not the lifetime of the whole design.
+    """
     if not observations:
         return [], []
     obs = pd.DataFrame(observations)
@@ -508,27 +564,58 @@ def _aggregate(observations, runs, cells):
         for r in runs.values()
     ])
     obs = obs.merge(rmap, on="run_id", how="inner")
-    obs = obs[obs["value"].notna()]
-    obs = obs[(obs["quality"] != "insufficient") & (obs["test_type"] != "unknown") & (obs["anomaly"] == "")
-              & (obs["qc_status"] != "defect")]
+    obs["value"] = pd.to_numeric(obs["value"], errors="coerce")
+    obs = obs[np.isfinite(obs["value"])]
+    if "obs_quality" not in obs:
+        obs["obs_quality"] = ""
+    if "censored" not in obs:
+        obs["censored"] = None
+    obs["censored"] = obs["censored"].map(_censor_flag)
+    conflicting_cells = {
+        cid for cid, group in rmap.groupby("cell_id") if group["design_id"].nunique() > 1
+    }
+    obs = obs[(obs["quality"].str.lower() != "insufficient")
+              & (obs["obs_quality"].str.lower() != "insufficient")
+              & (obs["test_type"].str.lower() != "unknown") & (obs["anomaly"] == "")
+              & (obs["qc_status"].str.lower() != "defect")
+              & ~obs["cell_id"].isin(conflicting_cells)]
     if obs.empty:
         return [], []
 
-    gcols = ["cell_id", "cohort_key", "metric_id", "window"]
+    obs["censor_lower_bound"] = obs["value"].where(obs["censored"] == 1)
+    obs["censored_run_id"] = obs["run_id"].where(obs["censored"] == 1)
+    obs["unknown_censor_run_id"] = obs["run_id"].where(obs["censored"].isna())
+    gcols = ["design_id", "cell_id", "cohort_key", "metric_id", "window"]
     cell_df = (obs.groupby(gcols, dropna=False)
-               .agg(value=("value", "median"), n_runs=("run_id", "nunique")).reset_index())
-    cell_df["value"] = cell_df["value"].astype(float)
+               .agg(value=("value", "median"), n_runs=("run_id", "nunique"),
+                    n_censored_runs=("censored_run_id", "nunique"),
+                    n_unknown_censor_runs=("unknown_censor_run_id", "nunique"),
+                    censor_lower_bound=("censor_lower_bound", "max")).reset_index())
+    cell_df["censored"] = (cell_df["n_censored_runs"] > 0).astype(int)
+    unknown = cell_df["n_unknown_censor_runs"] > 0
+    cell_df["value"] = cell_df["value"].astype(object).where((cell_df["censored"] == 0) & ~unknown, None)
+    cell_df["censored"] = cell_df["censored"].astype(object).where(
+        (cell_df["censored"] == 1) | ~unknown, None)
     cell_df["n_runs"] = cell_df["n_runs"].astype(int)
-    cell_rows = cell_df.to_dict("records")
-
-    cell_design = {c["cell_id"]: c["design_id"] for c in cells.values()}
-    cell_df["design_id"] = cell_df["cell_id"].map(cell_design)
+    cell_rows = cell_df.drop(columns="design_id").to_dict("records")
+    cell_df["unknown_censoring"] = unknown.astype(int)
+    cell_df["censored"] = pd.to_numeric(cell_df["censored"], errors="coerce").fillna(0).astype(int)
 
     gcols = ["design_id", "cohort_key", "metric_id", "window"]
-    design_df = (cell_df.groupby(gcols, dropna=False)["value"]
-                 .agg(n_cells="size", mean="mean", sd="std", median="median", min="min", max="max")
+    cell_df["value"] = pd.to_numeric(cell_df["value"], errors="coerce")
+    design_df = (cell_df.groupby(gcols, dropna=False)
+                 .agg(n_cells=("cell_id", "size"), mean=("value", "mean"),
+                      sd=("value", "std"), median=("value", "median"),
+                      min=("value", "min"), max=("value", "max"),
+                      n_observed_cells=("value", "count"), n_censored_cells=("censored", "sum"),
+                      n_unknown_censor_cells=("unknown_censoring", "sum"),
+                      censor_lower_bound_min=("censor_lower_bound", "min"),
+                      censor_lower_bound_max=("censor_lower_bound", "max"))
                  .reset_index())
     design_df["n_cells"] = design_df["n_cells"].astype(int)
+    for col in ("mean", "sd", "median", "min", "max"):
+        design_df[col] = design_df[col].astype(object).where(
+            (design_df["n_censored_cells"] == 0) & (design_df["n_unknown_censor_cells"] == 0), None)
     design_df["sd"] = design_df["sd"].astype(object).where(design_df["n_cells"] >= 2, None)
     return cell_rows, design_df.to_dict("records")
 
@@ -551,7 +638,7 @@ def _write_schema(conn):
             tags_json TEXT, design_fields_json TEXT, conflicts TEXT, source TEXT,
             n_cells INTEGER, n_runs INTEGER);
         CREATE TABLE cells(cell_id TEXT PRIMARY KEY, status TEXT, design_id TEXT,
-            physical_cell_id TEXT, sample_name TEXT);
+            physical_cell_id TEXT, sample_name TEXT, design_conflict INTEGER);
         CREATE TABLE tests(test_key TEXT PRIMARY KEY, test_type TEXT, test_type_source TEXT,
             test_type_conf REAL, test_date TEXT, temperature_c REAL, pressure_mpa REAL,
             protocol TEXT, rpt_stage TEXT, owner TEXT, set_no TEXT, batch TEXT,
@@ -563,9 +650,12 @@ def _write_schema(conn):
         CREATE TABLE observations(run_id TEXT, metric_id TEXT, window TEXT, value REAL,
             unit TEXT, censored INTEGER, quality TEXT, method TEXT);
         CREATE TABLE cell_metrics(cell_id TEXT, cohort_key TEXT, metric_id TEXT, window TEXT,
-            value REAL, n_runs INTEGER);
+            value REAL, n_runs INTEGER, censored INTEGER, n_censored_runs INTEGER,
+            censor_lower_bound REAL, n_unknown_censor_runs INTEGER);
         CREATE TABLE design_metrics(design_id TEXT, cohort_key TEXT, metric_id TEXT, window TEXT,
-            n_cells INTEGER, mean REAL, sd REAL, median REAL, min REAL, max REAL);
+            n_cells INTEGER, mean REAL, sd REAL, median REAL, min REAL, max REAL,
+            n_observed_cells INTEGER, n_censored_cells INTEGER,
+            censor_lower_bound_min REAL, censor_lower_bound_max REAL, n_unknown_censor_cells INTEGER);
         CREATE TABLE metric_defs(metric_id TEXT PRIMARY KEY, name_ko TEXT, unit TEXT,
             higher_is_better INTEGER, definition TEXT);
         CREATE TABLE cohorts(cohort_key TEXT PRIMARY KEY, test_type TEXT, temperature_c TEXT,
@@ -595,8 +685,9 @@ def _fill_tables(conn, designs, cells, tests, runs, run_datasets, run_profile_df
          for did, e in designs.items()])
 
     _write_many(conn,
-        "INSERT INTO cells VALUES(?,?,?,?,?)",
-        [(c["cell_id"], c["status"], c["design_id"], c["physical_cell_id"], c["sample_name"])
+        "INSERT INTO cells VALUES(?,?,?,?,?,?)",
+        [(c["cell_id"], c["status"], c["design_id"], c["physical_cell_id"], c["sample_name"],
+          c["design_conflict"])
          for c in cells.values()])
 
     _write_many(conn,
@@ -630,14 +721,18 @@ def _fill_tables(conn, designs, cells, tests, runs, run_datasets, run_profile_df
           o["censored"], o["quality"], o["method"]) for o in observations])
 
     _write_many(conn,
-        "INSERT INTO cell_metrics VALUES(?,?,?,?,?,?)",
-        [(m["cell_id"], m["cohort_key"], m["metric_id"], m["window"], m["value"], m["n_runs"])
+        "INSERT INTO cell_metrics VALUES(?,?,?,?,?,?,?,?,?,?)",
+        [(m["cell_id"], m["cohort_key"], m["metric_id"], m["window"], m["value"], m["n_runs"],
+          m["censored"], m["n_censored_runs"], m["censor_lower_bound"], m["n_unknown_censor_runs"])
          for m in cell_metrics])
 
     _write_many(conn,
-        "INSERT INTO design_metrics VALUES(?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO design_metrics VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         [(m["design_id"], m["cohort_key"], m["metric_id"], m["window"], m["n_cells"],
-          m["mean"], m["sd"], m["median"], m["min"], m["max"]) for m in design_metrics])
+          m["mean"], m["sd"], m["median"], m["min"], m["max"], m["n_observed_cells"],
+          m["n_censored_cells"], m["censor_lower_bound_min"], m["censor_lower_bound_max"],
+          m["n_unknown_censor_cells"])
+         for m in design_metrics])
 
     _write_many(conn,
         "INSERT INTO metric_defs VALUES(?,?,?,?,?)",
@@ -684,6 +779,8 @@ def _write_identity_gaps(path, tests, cells, runs, designs):
         gaps = []
         if cell_status.get(r["cell_id"]) == "provisional":
             gaps.append("no_physical_cell_id")
+        if cells.get(r["cell_id"], {}).get("design_conflict"):
+            gaps.append("physical_cell_design_conflict")
         if design.get("status") == "candidate":
             gaps.append("candidate_design")
         if design.get("conflicts"):
@@ -754,9 +851,14 @@ def design_table(project, cohort_key=None):
     conn = connect_ro(project)
     try:
         if cohort_key:
+            columns = {r[1] for r in conn.execute("PRAGMA table_info(design_metrics)")}
+            extra = "".join(f", m.{name}" for name in (
+                "n_observed_cells", "n_censored_cells", "censor_lower_bound_min", "censor_lower_bound_max",
+                "n_unknown_censor_cells",
+            ) if name in columns)
             return pd.read_sql_query(
                 "SELECT d.*, m.cohort_key, m.metric_id, m.window, m.n_cells, m.mean, m.sd, "
-                "m.median, m.min, m.max FROM designs d LEFT JOIN design_metrics m "
+                f"m.median, m.min, m.max{extra} FROM designs d LEFT JOIN design_metrics m "
                 "ON d.design_id=m.design_id AND m.cohort_key=? ORDER BY d.design_id",
                 conn, params=(cohort_key,))
         return pd.read_sql_query("SELECT * FROM designs ORDER BY n_cells DESC", conn)

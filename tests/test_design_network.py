@@ -11,7 +11,9 @@ from battery_insight.design_network import (
     design_similarity,
     electrochem_edges,
     render_html,
+    _collect,
     _embed_json,
+    _percentiles,
 )
 
 
@@ -173,6 +175,8 @@ def test_build_network_end_to_end(tmp_path):
 
     cohort = next(c for c in payload["cohorts"] if c["cohort_key"] == ck)
     assert cohort["useful"] is True
+    assert cohort["comparison_eligible"] is True
+    assert cohort["comparison_exclusions"] == []
 
 
 def test_discordance_present(tmp_path):
@@ -230,3 +234,264 @@ def test_embedded_json_parses_back(tmp_path):
     block = html[start:end].replace("<\\/", "</")
     data = json.loads(block)
     assert "designs" in data and len(data["designs"]) == 3
+
+
+def test_unknown_censor_status_blocks_even_stale_nonnull_means():
+    from battery_insight.design_network import _metric_comparison_exclusions, _percentiles
+
+    metric = {
+        "metric_id": "cycles_to_80pct", "mean": 200, "n_cells": 2,
+        "n_observed_cells": 1, "n_censored_cells": 0, "n_unknown_censor_cells": 1,
+    }
+    assert _metric_comparison_exclusions(metric) == ["censoring_metadata_unknown"]
+    assert _percentiles({"D1": {"cycles_to_80pct": metric}}, {"cycles_to_80pct": True}) == {"D1": {}}
+
+
+@pytest.fixture
+def synthetic_conn(tmp_path):
+    path = tmp_path / "synthetic.sqlite3"
+    _make_db(path)
+    conn = sqlite3.connect(path)
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize(("field", "value"), [
+    ("temperature_c", None), ("temperature_c", ""), ("temperature_c", "unknown"),
+    ("temperature_c", "T?"), ("temperature_c", "NaN"), ("temperature_c", "inf"),
+    ("test_type", None), ("test_type", " "), ("test_type", "UNKNOWN"),
+    ("test_type", "N/A"), ("test_type", "unspecified"), ("test_type", "미정"),
+    ("c_rate_class", None), ("c_rate_class", "unknown"), ("c_rate_class", "C?"),
+    ("c_rate_class", "0.5C/C?"), ("c_rate_class", "C?/0.5C"),
+    ("c_rate_class", "0.5C/unknown"), ("c_rate_class", "--"),
+    ("c_rate_class", "0.5C/N/A"), ("c_rate_class", "C_unknown"),
+    ("v_window", None), ("v_window", "?-4.2"), ("v_window", "3.0-?"),
+    ("v_window", "null"), ("v_window", "—"),
+])
+def test_unknown_original_conditions_block_comparisons(synthetic_conn, field, value):
+    conn = synthetic_conn
+    original = _collect(conn)
+    conn.execute(f"UPDATE cohorts SET {field}=?", (value,))
+    before = conn.execute("SELECT * FROM cohorts").fetchall()
+    metric_rows = conn.execute("SELECT * FROM design_metrics").fetchall()
+    payload = _collect(conn)
+    cohort = payload["cohorts"][0]
+    ck = cohort["cohort_key"]
+    # The key still spells out known conditions; it must not fill missing originals.
+    assert cohort[field] == value
+    assert cohort["comparison_eligible"] is False
+    assert cohort["comparison_exclusions"] == [f"missing_condition:{field}"]
+    assert cohort["useful"] is False
+    assert payload["electrochem_edges"][ck] == []
+    assert payload["percentiles"][ck] == {"D1": {}, "D2": {}, "D3": {}}
+    assert payload["design_metrics"] == original["design_metrics"]
+    assert payload["design_edges"] == original["design_edges"]
+    assert conn.execute("SELECT * FROM cohorts").fetchall() == before
+    assert conn.execute("SELECT * FROM design_metrics").fetchall() == metric_rows
+
+
+def test_absent_cohort_does_not_infer_conditions_from_key(synthetic_conn):
+    synthetic_conn.execute("DELETE FROM cohorts")
+    payload = _collect(synthetic_conn)
+    cohort = payload["cohorts"][0]
+    assert cohort["comparison_eligible"] is False
+    assert cohort["useful"] is False
+    assert cohort["comparison_exclusions"] == [
+        "missing_condition:test_type", "missing_condition:temperature_c",
+        "missing_condition:c_rate_class", "missing_condition:v_window",
+    ]
+    assert payload["electrochem_edges"][cohort["cohort_key"]] == []
+    assert all(not p for p in payload["percentiles"][cohort["cohort_key"]].values())
+
+
+def test_inferred_condition_columns_do_not_replace_originals(synthetic_conn):
+    conn = synthetic_conn
+    conn.execute("ALTER TABLE cohorts ADD COLUMN inferred_temperature_c REAL")
+    conn.execute("UPDATE cohorts SET temperature_c=NULL, inferred_temperature_c=25")
+    payload = _collect(conn)
+    cohort = payload["cohorts"][0]
+    assert cohort["temperature_c"] is None
+    assert "inferred_temperature_c" not in cohort
+    assert cohort["comparison_exclusions"] == ["missing_condition:temperature_c"]
+    assert not payload["electrochem_edges"][cohort["cohort_key"]]
+
+
+def test_condition_gating_is_per_cohort_and_respects_filter(synthetic_conn):
+    conn = synthetic_conn
+    ck = conn.execute("SELECT cohort_key FROM cohorts").fetchone()[0]
+    conn.execute("INSERT INTO cohorts SELECT 'missing', test_type, NULL, c_rate_class, "
+                 "v_window, n_designs, n_cells FROM cohorts")
+    conn.execute("INSERT INTO design_metrics SELECT design_id, 'missing', metric_id, "
+                 "window, n_cells, mean, sd, median, min, max FROM design_metrics")
+    # Zero Celsius is known, not a falsey placeholder.
+    conn.execute("UPDATE cohorts SET temperature_c=0 WHERE cohort_key=?", (ck,))
+    payload = _collect(conn)
+    assert payload["cohorts"][0]["cohort_key"] == ck
+    assert payload["cohorts"][0]["comparison_eligible"] is True
+    assert payload["electrochem_edges"][ck]
+    assert payload["percentiles"][ck]["D1"]
+    assert not payload["electrochem_edges"]["missing"]
+    filtered = _collect(conn, cohort_filter="missing")
+    assert len(filtered["cohorts"]) == 1
+    assert set(filtered["design_metrics"]) == {"missing"}
+    assert filtered["electrochem_edges"] == {"missing": []}
+
+
+def _add_censor_metadata(conn):
+    for field, dtype in (
+        ("n_observed_cells", "INTEGER"), ("n_censored_cells", "INTEGER"),
+        ("censor_lower_bound_min", "REAL"), ("censor_lower_bound_max", "REAL"),
+    ):
+        conn.execute(f"ALTER TABLE design_metrics ADD COLUMN {field} {dtype}")
+    conn.execute("UPDATE design_metrics SET n_observed_cells=n_cells, n_censored_cells=0")
+
+
+def _keep_capacity_and_cycles(conn):
+    conn.execute("DELETE FROM design_metrics WHERE metric_id NOT IN ('cap_initial_ah', 'retention_pct')")
+    conn.execute("UPDATE design_metrics SET metric_id='cycles_to_80pct', window='' "
+                 "WHERE metric_id='retention_pct'")
+    conn.execute("INSERT INTO metric_defs VALUES ('cycles_to_80pct','80% 수명','cycle',1,'first crossing')")
+
+
+@pytest.mark.parametrize("stale_mean", [None, 999.0])
+@pytest.mark.parametrize("metric_id", ["cycles_to_80pct", "cap_initial_ah"])
+def test_censored_metrics_excluded_even_with_stale_means(synthetic_conn, stale_mean, metric_id):
+    conn = synthetic_conn
+    _keep_capacity_and_cycles(conn)
+    _add_censor_metadata(conn)
+    original = _collect(conn)
+    ck = original["cohorts"][0]["cohort_key"]
+    assert len(original["electrochem_edges"][ck]) == 3
+    conn.execute(
+        "UPDATE design_metrics SET n_observed_cells=3, n_censored_cells=1, "
+        "censor_lower_bound_min=120, censor_lower_bound_max=150, mean=? "
+        "WHERE design_id='D1' AND metric_id=?", (stale_mean, metric_id),
+    )
+    before = conn.execute("SELECT * FROM design_metrics").fetchall()
+    payload = _collect(conn)
+    metric = payload["design_metrics"][ck]["D1"][metric_id]
+    assert metric["mean"] == stale_mean
+    assert metric["n_cells"] == 4
+    assert metric["n_observed_cells"] == 3
+    assert metric["n_censored_cells"] == 1
+    assert metric["censor_lower_bound_min"] == 120
+    assert metric["censor_lower_bound_max"] == 150
+    assert metric["comparison_exclusions"] == ["censored_cells"]
+    assert metric_id not in payload["percentiles"][ck]["D1"]
+    assert metric_id in payload["percentiles"][ck]["D2"]
+    # D1 now shares only one safe metric; D2-D3 still share two.
+    assert len(payload["electrochem_edges"][ck]) == 1
+    edge = payload["electrochem_edges"][ck][0]
+    assert {edge["source"], edge["target"]} == {"D2", "D3"}
+    assert edge["shared"] == 2
+    assert conn.execute("SELECT * FROM design_metrics").fetchall() == before
+
+
+def test_legacy_cycles_excluded_but_ordinary_metrics_still_rank(synthetic_conn):
+    _keep_capacity_and_cycles(synthetic_conn)
+    payload = _collect(synthetic_conn)
+    ck = payload["cohorts"][0]["cohort_key"]
+    assert payload["electrochem_edges"][ck] == []
+    for did, metrics in payload["design_metrics"][ck].items():
+        cycles = metrics["cycles_to_80pct"]
+        assert cycles["mean"] is not None
+        assert "n_censored_cells" not in cycles
+        assert cycles["comparison_exclusions"] == ["censoring_metadata_missing"]
+        assert set(payload["percentiles"][ck][did]) == {"cap_initial_ah"}
+        assert metrics["cap_initial_ah"]["comparison_exclusions"] == []
+
+
+def test_uncensored_cycles_with_metadata_remain_comparable(synthetic_conn):
+    _keep_capacity_and_cycles(synthetic_conn)
+    _add_censor_metadata(synthetic_conn)
+    payload = _collect(synthetic_conn)
+    ck = payload["cohorts"][0]["cohort_key"]
+    assert len(payload["electrochem_edges"][ck]) == 3
+    for did, metrics in payload["design_metrics"][ck].items():
+        assert metrics["cycles_to_80pct"]["comparison_exclusions"] == []
+        assert metrics["cycles_to_80pct"]["censor_lower_bound_min"] is None
+        assert set(payload["percentiles"][ck][did]) == {"cap_initial_ah", "cycles_to_80pct"}
+
+
+@pytest.mark.parametrize(("observed", "censored", "reason"), [
+    (4, None, "censoring_metadata_missing"),
+    (None, 0, "censoring_metadata_missing"),
+    (3, 0, "censoring_metadata_invalid"),
+    (4, -1, "censoring_metadata_invalid"),
+])
+def test_unverified_censor_metadata_does_not_enable_cycles(synthetic_conn, observed, censored, reason):
+    _keep_capacity_and_cycles(synthetic_conn)
+    _add_censor_metadata(synthetic_conn)
+    synthetic_conn.execute(
+        "UPDATE design_metrics SET n_observed_cells=?, n_censored_cells=? "
+        "WHERE metric_id='cycles_to_80pct' AND design_id='D1'", (observed, censored),
+    )
+    payload = _collect(synthetic_conn)
+    ck = payload["cohorts"][0]["cohort_key"]
+    assert payload["design_metrics"][ck]["D1"]["cycles_to_80pct"]["comparison_exclusions"] == [reason]
+    assert "cycles_to_80pct" not in payload["percentiles"][ck]["D1"]
+    assert all("D1" not in (e["source"], e["target"]) for e in payload["electrochem_edges"][ck])
+
+
+def test_all_censored_cohort_not_useful(synthetic_conn):
+    _add_censor_metadata(synthetic_conn)
+    synthetic_conn.execute("UPDATE design_metrics SET n_censored_cells=n_cells, n_observed_cells=0")
+    payload = _collect(synthetic_conn)
+    cohort = payload["cohorts"][0]
+    ck = cohort["cohort_key"]
+    assert cohort["comparison_eligible"] is True  # Conditions are known.
+    assert cohort["useful"] is False
+    assert payload["electrochem_edges"][ck] == []
+    assert all(not p for p in payload["percentiles"][ck].values())
+
+
+@pytest.mark.parametrize(("values", "expected"), [
+    ([7], [50]), ([7, 7, 7], [50, 50, 50]),
+    ([1, 2, 3], [0, 50, 100]), ([1, 1, 3], [25, 25, 100]),
+    ([1, 3, 3], [0, 75, 75]), ([1, 2, 2, 3], [0, 50, 50, 100]),
+])
+@pytest.mark.parametrize("direction", [True, False, None])
+def test_percentiles_use_direction_corrected_midranks(values, expected, direction):
+    dmap = {str(i): {"metric|100": {"mean": value}} for i, value in enumerate(values)}
+    percentiles = _percentiles(dmap, {"metric": direction})
+    for i, pct in enumerate(expected):
+        assert percentiles[str(i)]["metric|100"] == {
+            "pct": 100 - pct if direction is False else pct,
+            "flipped": None if direction is None else not direction,
+        }
+
+
+def test_percentiles_directly_exclude_censored_and_legacy_cycles():
+    dmap = {
+        "A": {"ordinary": {"mean": 99, "n_censored_cells": 1},
+              "cycles_to_80pct": {"mean": 900}},
+        "B": {"ordinary": {"mean": 2}},
+        "C": {"ordinary": {"mean": 4}},
+    }
+    pc = _percentiles(dmap, {"ordinary": True, "cycles_to_80pct": True})
+    assert pc["A"] == {}
+    assert pc["B"]["ordinary"]["pct"] == 0
+    assert pc["C"]["ordinary"]["pct"] == 100
+
+
+def test_html_wires_visible_condition_and_censoring_warnings(synthetic_conn):
+    synthetic_conn.execute("UPDATE cohorts SET c_rate_class='0.5C/C?'")
+    _keep_capacity_and_cycles(synthetic_conn)
+    html = render_html(_collect(synthetic_conn))
+    # Check the executable UI, not just the embedded JSON payload.
+    ui = html[html.index('<script>\n"use strict";'):]
+    assert 'id="comparisonWarning"' in html
+    assert 'document.getElementById("comparisonWarning").textContent' in ui
+    assert 'cohort.comparison_eligible === false' in ui
+    assert 'cohort.comparison_exclusions||[]).map(comparisonReason)' in ui
+    assert 'temperature_c:"온도"' in ui and 'c_rate_class:"C-rate"' in ui
+    assert '중도절단 정보 없음 — 비교 제외' in ui
+    assert '중도절단 포함 — 비교 제외' in ui
+    assert 'c.censor_lower_bound_min' in ui and 'c.n_censored_cells' in ui
+    assert 'const fa=fmtCell(ca), fb=fmtCell(cb)' in ui
+    assert 'if(!cohortComparable()) note="조건 미확인 — 비교 제외"' in ui
+    # Excluded ranks must not become zero-valued radar vertices.
+    assert 'sel.every(id=>pc[id]&&pc[id][k])' in ui
+    assert '공통 지표(≥3)가 부족합니다.</p>\'; return;' in ui

@@ -475,10 +475,11 @@ RET_TOL, ICE_TOL, CE_TOL = 2.0, 0.3, 0.3   # %p tolerance when a slide number is
 ICE_LOOSE = 0.7
 
 
-def test_cycle_facts(project) -> dict:
+def test_cycle_facts(project, *, include_excluded=False) -> dict:
     """test_key -> (discharge_ah[cycle], charge_ah[cycle]) median over the test's runs (cycle 1 = first).
 
-    Runs judged ``defect`` by cell_qc are left out unless every run of the test is.
+    Runs judged ``defect`` by cell_qc are left out, including fully excluded tests.
+    ``include_excluded`` is only for data-availability counts, never metric matching.
     """
     p = Path(project) / "db" / "run_cycles.parquet"
     if not p.exists():
@@ -488,13 +489,13 @@ def test_cycle_facts(project) -> dict:
     c["test_key"] = c["run_id"].str.split(":", n=1).str[0]
     from .cell_qc import load_status
     bad = {rid for rid, (status, _) in load_status(project).items() if status == "defect"}
-    if bad:
-        is_bad = c["run_id"].isin(bad)
-        all_bad = is_bad.groupby(c["test_key"]).transform("all")
-        c = c[~is_bad | all_bad]
+    if bad and not include_excluded:
+        c = c[~c["run_id"].isin(bad)]
     g = c.groupby(["test_key", "cycle_index"], sort=True)[["discharge_capacity_ah", "charge_capacity_ah"]].median()
     out = {}
     for k, d in g.groupby(level=0, sort=False):
+        d = d.droplevel(0)
+        d = d.reindex(range(1, int(d.index.max()) + 1))
         out[k] = (d["discharge_capacity_ah"].to_numpy(float), d["charge_capacity_ah"].to_numpy(float))
     return out
 
@@ -750,6 +751,7 @@ def attach_to_db(project, conn=None) -> int:
     """Copy the slide tables (slides/*.parquet) into research.sqlite3, aggregate slide facts per design and
     (re)create the views v_test_slides / v_test_slide_facts."""
     from .slide_review import design_slide_facts
+    from . import evidence_links
     project = Path(project)
     src = {t: project / "slides" / f"{t}.parquet" for t in SLIDE_TABLES}
     if not all(p.exists() for p in src.values()):
@@ -790,6 +792,8 @@ def attach_to_db(project, conn=None) -> int:
             tsel = "".join(f"t.{c}, " for c in ("owner", "test_date", "set_no", "sample_name", "test_type",
                                                  "temperature_c", "pressure_mpa") if c in tcols)
             ctx = "test_context" in src
+            fcols = {r[1] for r in conn.execute("PRAGMA table_info(test_slide_facts)")}
+            qcsel = "".join(f"f.{c}, " for c in ("db_qc_excluded_runs", "db_cycle_basis") if c in fcols)
             if ctx:
                 conn.execute("CREATE INDEX IF NOT EXISTS ix_tctx_test ON test_context(test_key)")
             conn.execute(f"""CREATE VIEW v_test_slide_facts AS
@@ -797,11 +801,13 @@ def attach_to_db(project, conn=None) -> int:
                        f.review_status, f.link_status, f.slide_file_name, f.slide_no, f.slide_set_label, f.slide_date,
                        f.slide_design, f.slide_conditions, f.slide_chg1_mah_g, f.slide_dchg1_mah_g, f.slide_ice_pct,
                        f.db_dchg1_mah, f.db_ice_pct, f.implied_active_mass_mg, f.metric_check, f.slide_owner_guess,
+                       {qcsel}
                        {'x.ctx_reason, x.ctx_detail, x.sibling_slide AS ctx_sibling_slide, ' if ctx else ''}
                        f.slide_attrs_json, f.slide_metrics_json
                 FROM test_slide_facts f JOIN tests t ON t.test_key = f.test_key
                 LEFT JOIN designs g ON g.design_id = coalesce(t.design_id, t.candidate_id)
                 {'LEFT JOIN test_context x ON x.test_key = f.test_key' if ctx else ''}""")
+        n += sum(evidence_links.attach_to_db(project, conn).values())
         conn.commit()
         return n
     finally:
@@ -809,18 +815,23 @@ def attach_to_db(project, conn=None) -> int:
             conn.close()
 
 
-def build_slide_link(project, slide_roots, *, workers: int = 8, log=print, write_db: bool = True) -> dict:
-    """Index decks under ``slide_roots`` (one or more team folders), extract set mentions and link them to tests."""
+def build_slide_link(project, slide_roots=None, *, workers: int = 8, log=print, write_db: bool = True,
+                     refresh_network: bool = True) -> dict:
+    """Link indexed slides to current data; omitted roots reuse the existing slide index without scanning decks."""
     from .slide_facts import extract_sets
     from .slide_context import data_only_context
     from .slide_review import (REVIEW_EXTRA, apply_review, build_test_facts, deck_families, evaluate_auto, load_review,
                                owner_candidates, review_status, slide_copies)
     t0 = time.time()
     project = Path(project)
-    roots = _roots(slide_roots)
     out = project / "slides"
     out.mkdir(exist_ok=True)
-    idx = index_slides(roots, out / "slide_index.parquet", workers=workers, log=log)
+    if slide_roots is None:
+        idx = pd.read_parquet(out / "slide_index.parquet")
+        roots = ["cached slide_index.parquet"]
+    else:
+        roots = _roots(slide_roots)
+        idx = index_slides(roots, out / "slide_index.parquet", workers=workers, log=log)
     S = idx[idx["slide_no"] > 0].reset_index(drop=True)
     S["slide_owner"] = [_slide_owner(f, p) for f, p in zip(S["owner_folder"], S["deck_people"])]
     S = pd.concat([S, slide_copies(S)], axis=1)
@@ -971,10 +982,18 @@ def build_slide_link(project, slide_roots, *, workers: int = 8, log=print, write
     link_tbl = links.rename(columns={"title": "slide_title", "set_row": "set_id"}).drop(
         columns=["owner_name", "test_date", "set_no", "sample_name", "temperature_c", "pressure_mpa"], errors="ignore")
     tfacts = build_test_facts(links, review, tests, facts)
+    from .cell_qc import load_status
+    excluded = pd.Series([rid.split(":", 1)[0] for rid, (status, _) in load_status(project).items()
+                          if status == "defect"], dtype=str).value_counts()
+    tfacts["db_qc_excluded_runs"] = tfacts["test_key"].map(excluded).fillna(0).astype(int)
+    tfacts["db_cycle_basis"] = [
+        ("qc_filtered" if n else "all_runs") if key in facts else ("no_eligible_cycles" if n else "no_cycles")
+        for key, n in zip(tfacts["test_key"], tfacts["db_qc_excluded_runs"])]
     deck_owner = dict(zip(deck_tbl["file_path"], deck_tbl["slide_owner"]))
     owners_sug = owner_candidates(review, links, tests, deck_owner)
+    available = test_cycle_facts(project, include_excluded=True)
     ctx = data_only_context(tests, tfacts, deck_tbl, owners_sug, {k: v[0] for k, v in dinfo.items()},
-                            {k: len(v[0]) for k, v in facts.items()})
+                            {k: len(v[0]) for k, v in available.items()})
     ctx_cols = ["test_key", "ctx_reason", "ctx_detail", "sibling_slide"]
     tb = tb.merge(ctx[ctx_cols], on="test_key", how="left")
     rv_tbl = review.copy()
@@ -995,7 +1014,10 @@ def build_slide_link(project, slide_roots, *, workers: int = 8, log=print, write
             pass
         finally:
             c.close()
-    if n_db and (project / "db" / "network.html").exists():
+    if n_db:
+        from .research_db import _write_xlsx
+        _write_xlsx(project / "db" / "research.sqlite3", project / "db" / "research.xlsx")
+    if n_db and refresh_network and (project / "db" / "network.html").exists():
         try:  # refresh slide references shown in the design network
             from .design_network import build_network
             build_network(project)
@@ -1076,6 +1098,7 @@ def build_slide_link(project, slide_roots, *, workers: int = 8, log=print, write
            "slide_date": "장표일자", "slide_design": "장표 설계", "slide_conditions": "장표 조건",
            "slide_chg1_mah_g": "장표 1st충전(mAh/g)", "slide_dchg1_mah_g": "장표 1st방전(mAh/g)", "slide_ice_pct": "장표 ICE(%)",
            "db_chg1_mah": "DB 1st충전(mAh)", "db_dchg1_mah": "DB 1st방전(mAh)", "db_ice_pct": "DB ICE(%)",
+           "db_qc_excluded_runs": "QC 제외 채널수", "db_cycle_basis": "DB 사이클 집계범위",
            "implied_active_mass_mg": "역산 활물질량(mg)", "slide_owner_guess": "담당자 추정(장표)", "slide_evidence": "근거",
            "slide_file_path": "경로", "candidate_name": "후보 이름", "n_tests_supporting": "근거 test수",
            "n_code_tests": "사번 test수", "share": "비율", "from_review": "검토근거", "from_decks": "장표근거",

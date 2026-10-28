@@ -27,13 +27,13 @@ import pandas as pd
 
 REVIEW_FILE = "slide_link_review.csv"
 REVIEW_COLS = ["test_key", "decision", "file_name", "slide_no", "set_label", "confidence", "evidence",
-               "slide_design", "slide_conditions", "metric_check", "owner_guess", "note", "reviewer"]
+               "slide_design", "slide_conditions", "metric_check", "owner_guess", "note", "reviewer", "file_path"]
 DECISIONS = ("link", "no_slide", "unsure")
 REVIEW_SCORE = {"high": 30.0, "medium": 25.0, "low": 20.0}
 CONF_ORDER = ["confirmed", "probable", "verified", "matched", "candidate"]
 STRONG = ("confirmed", "probable", "verified", "matched")     # links trusted enough for slide facts
 REVIEW_EXTRA = ["review_status", "review_confidence", "reviewer", "review_note", "review_design",
-                "review_conditions", "owner_guess"]
+                "review_conditions", "owner_guess", "review_file_path", "review_evidence"]
 
 
 def _norm(s) -> str:
@@ -64,13 +64,25 @@ def load_review(project) -> pd.DataFrame:
     r = r[REVIEW_COLS].apply(lambda s: s.astype(str).str.strip())
     r["decision"] = r["decision"].str.lower()
     r["confidence"] = r["confidence"].str.lower()
-    return r[(r["test_key"] != "") & r["decision"].isin(DECISIONS)].reset_index(drop=True)
+    r = r[(r["test_key"] != "") & r["decision"].isin(DECISIONS)]
+    return _effective_review(r).reset_index(drop=True)
+
+
+def _effective_review(review: pd.DataFrame) -> pd.DataFrame:
+    """An explicit human decision supersedes all agent decisions for that test."""
+    if review is None or review.empty or "reviewer" not in review:
+        return review
+    who = review["reviewer"].map(_str).str.strip().str.lower()
+    human = (who != "") & ~who.str.startswith("agent")
+    keys = set(review.loc[human, "test_key"])
+    return review[human | ~review["test_key"].isin(keys)]
 
 
 def review_status(review: pd.DataFrame) -> pd.Series:
     """test_key -> link | no_slide | unsure (a single 'link' row wins)."""
     if review is None or not len(review):
         return pd.Series(dtype=str)
+    review = _effective_review(review)
     rank = review["decision"].map({"link": 0, "no_slide": 1, "unsure": 2})
     return review.assign(_r=rank).sort_values("_r").drop_duplicates("test_key").set_index("test_key")["decision"]
 
@@ -79,8 +91,11 @@ def _sets_for_label(label: str, ids: list, sets: pd.DataFrame) -> list:
     """Parsed Set mentions on the page that correspond to the reviewer's set label."""
     if not ids:
         return []
+    if (re.search(r"set\s*#?\s*\d+\s*[-~,/&]\s*(?:set\s*#?\s*)?\d", str(label), re.I)
+            or len(re.findall(r"set\s*#?\s*\d+", str(label), re.I)) > 1):
+        return []
     lab = _norm(label)
-    m = re.search(r"set0*(\d+)", lab)
+    m = re.search(r"set#?0*(\d+)", lab)
     if m:
         no = int(m.group(1))
         hit = [i for i in ids if pd.notna(sets.at[i, "set_no"]) and int(sets.at[i, "set_no"]) == no]
@@ -103,9 +118,9 @@ def apply_review(pairs: pd.DataFrame, review: pd.DataFrame, S: pd.DataFrame, set
         pairs[c] = ""
     if review is None or not len(review):
         return pairs, pd.DataFrame(columns=REVIEW_COLS)
+    review = _effective_review(review)
     status = review_status(review)
     linkers = set(status[status == "link"].index)
-    auto_fp = pairs[pairs["test_key"].isin(linkers)].groupby("test_key")["file_path"].agg(set).to_dict()
 
     by_name: dict[str, list] = {}
     for fp, fn in S[["file_path", "file_name"]].drop_duplicates().itertuples(index=False):
@@ -123,12 +138,18 @@ def apply_review(pairs: pd.DataFrame, review: pd.DataFrame, S: pd.DataFrame, set
         if not fps:
             bad.append(r.Index)
             continue
-        pref = [f for f in fps if f in auto_fp.get(r.test_key, ())]
-        fp = (pref or fps)[0]
+        explicit_path = _str(getattr(r, "file_path", "")).strip()
+        if explicit_path:
+            fps = [f for f in fps if Path(f) == Path(explicit_path)]
+        if len(fps) != 1:
+            bad.append(r.Index)
+            continue
+        fp = fps[0]
         s = srow.loc[(fp, n)]
         ids = _sets_for_label(r.set_label, by_slide.get((fp, n), []), sets)
         attrs, mets = {}, {}
-        for i in ids:
+        # A reviewed page can mention several Sets; do not pool their values into one Set.
+        for i in ids if len(ids) == 1 else []:
             attrs.update(_loads(sets.at[i, "attrs"]))
             mets.update(_loads(sets.at[i, "metrics"]))
         n_ok = n_bad = 0
@@ -143,11 +164,11 @@ def apply_review(pairs: pd.DataFrame, review: pd.DataFrame, S: pd.DataFrame, set
             "set_metrics": json.dumps(mets, ensure_ascii=False) if mets else "",
             "metric_check": "; ".join(x for x in (r.metric_check, f"자동대조: {det}" if det else "") if x),
             "n_agree": n_ok, "n_disagree": n_bad, "evidence": f"검토: {r.evidence}",
-            "set_attrs": json.dumps(attrs, ensure_ascii=False) if attrs else "", "set_row": int(ids[0]) if ids else -1,
+            "set_attrs": json.dumps(attrs, ensure_ascii=False) if attrs else "", "set_row": int(ids[0]) if len(ids) == 1 else -1,
             "file_path": fp, "set_evidence": "", "owner_score": 0.0,
-            "review_status": "link", "review_confidence": r.confidence, "reviewer": r.reviewer or "agent",
+            "review_status": "link", "review_confidence": r.confidence, "reviewer": r.reviewer,
             "review_note": r.note, "review_design": r.slide_design, "review_conditions": r.slide_conditions,
-            "owner_guess": r.owner_guess})
+            "owner_guess": r.owner_guess, "review_file_path": explicit_path, "review_evidence": r.evidence})
     # tests whose link rows all failed to resolve keep their automatic links (flagged), so nothing is lost silently
     resolved = {r["test_key"] for r in rows}
     decided = resolved | set(status[status == "no_slide"].index)
@@ -155,7 +176,7 @@ def apply_review(pairs: pd.DataFrame, review: pd.DataFrame, S: pd.DataFrame, set
     pairs.loc[pairs["test_key"].isin(linkers - resolved), "review_status"] = "unresolved"
     pairs = pairs[~pairs["test_key"].isin(decided)]
     if rows:
-        new = pd.DataFrame(rows).drop_duplicates(["test_key", "file_path", "slide_no"])
+        new = pd.DataFrame(rows).drop_duplicates(["test_key", "file_path", "slide_no", "set_label"])
         pairs = pd.concat([pairs, new], ignore_index=True)
     pairs = pairs.sort_values(["test_key", "score"], ascending=[True, False]).reset_index(drop=True)
     return pairs, review.loc[bad]
@@ -231,6 +252,7 @@ def _num(x):
 
 def build_test_facts(links: pd.DataFrame, review: pd.DataFrame, tests: pd.DataFrame, facts: dict) -> pd.DataFrame:
     """One row per test: review status, best slide, slide-stated design / conditions / results (``slide_*``)."""
+    review = _effective_review(review)
     status = review_status(review)
     guess = (review[review["owner_guess"] != ""].groupby("test_key")["owner_guess"].agg(lambda x: x.mode().iloc[0])
              if len(review) else pd.Series(dtype=str))
@@ -260,12 +282,10 @@ def build_test_facts(links: pd.DataFrame, review: pd.DataFrame, tests: pd.DataFr
                    db_ice_pct=ice if ice is not None and 0 < ice <= 105 else None,   # >105 %: partial 1st charge
                    slide_owner_guess=guess.get(key, ""), review_note=notes.get(key, ""))
         if g is not None and len(g):
-            g = g.sort_values("score", ascending=False)
+            g = g.sort_values("score", ascending=False, kind="stable")
             p = g.iloc[0]
-            attrs, mets = {}, {}
-            for a, m in zip(g["set_attrs"][::-1], g["set_metrics"][::-1]):  # primary link wins on conflicts
-                attrs.update(_loads(a))
-                mets.update(_loads(m))
+            # Summary values must originate on the cited page/Set, not another linked experiment.
+            attrs, mets = _loads(p["set_attrs"]), _loads(p["set_metrics"])
             rd = _str(p.get("review_design"))
             rc = _str(p.get("review_conditions"))
             sd = _num(mets.get("discharge_1st_mah_g"))

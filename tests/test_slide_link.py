@@ -134,3 +134,23 @@ def test_check_metrics_tolerances():
     ok, bad, det = sl.check_metrics({"ice_pct": 89.5}, (d, ch))   # 0.5 %p: neutral, neither agree nor disagree
     assert (ok, bad) == (0, 0) and "≈" in det
     assert sl.check_metrics({"retention_1cyc_pct": 50}, (d, ch))[:2] == (0, 0)  # too-short windows ignored
+
+
+def test_qc_exclusion_never_falls_back_and_cycle_gaps_are_preserved(tmp_path):
+    import numpy as np
+
+    (tmp_path / "db").mkdir()
+    pd.DataFrame([
+        dict(run_id=rid, cycle_index=n, discharge_capacity_ah=cap, charge_capacity_ah=0.1)
+        for rid, n, cap in [("a:1", 1, 0.09), ("a:2", 1, 0.01), ("b:1", 1, 0.02),
+                            ("c:1", 1, 0.08), ("c:1", 3, 0.07)]
+    ]).to_parquet(tmp_path / "db" / "run_cycles.parquet")
+    pd.DataFrame([
+        dict(run_id=rid, qc_status="defect", qc_reasons="manual exclusion")
+        for rid in ("a:2", "b:1")
+    ]).to_parquet(tmp_path / "db" / "run_qc.parquet")
+    facts = sl.test_cycle_facts(tmp_path)
+    assert facts["a"][0][0] == 0.09
+    assert "b" not in facts
+    assert np.isnan(facts["c"][0][1]) and facts["c"][0][2] == 0.07
+    assert "b" in sl.test_cycle_facts(tmp_path, include_excluded=True)

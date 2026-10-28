@@ -28,11 +28,11 @@ def run_folders(sources, convert, *, progress=None):
                          (" · " + result["error"] if result.get("error") else "")})
     summaries = [item.get("conversion", item).get("summary", {}) for item in results]
     failed_folders = sum(item.get("status") != "success" for item in results)
-    any_complete = any(item.get("complete", 0) for item in summaries) or any(item.get("status") == "success" for item in results)
+    any_complete = any(item.get("complete", 0) or item.get("existing", 0) for item in summaries) or any(item.get("status") == "success" for item in results)
     return {"status": "success" if not failed_folders else "partial_failure" if any_complete else "failed",
             "folders_total": len(results), "folders_failed": failed_folders, "folders": results,
             "summary": {name: sum(item.get(name, 0) for item in summaries)
-                        for name in ("files_total", "complete", "failed", "rows", "reused")}}
+                        for name in ("files_total", "complete", "existing", "failed", "rows", "reused")}}
 
 
 class FolderQueue(ttk.LabelFrame):

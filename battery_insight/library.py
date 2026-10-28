@@ -553,16 +553,46 @@ def unlink_record(project, dataset_id, *, reviewer="local_user", reason="연결 
     return {"dataset_id": dataset_id, "status": "needs_review"}
 
 
-def convert_and_register(project, source, *, progress=None):
+def conversion_record_roots(project):
+    """Folders whose conversion_manifest.json files count as existing conversion records."""
+    project = Path(project).resolve()
+    return [path for path in (project / "sources", project / "converted") if path.is_dir()]
+
+
+def _registered_roots(project):
+    with connect(project) as db:
+        return [resolve_path(project, row[0]) for row in db.execute("SELECT path FROM roots")]
+
+
+def convert_and_register(project, source, *, progress=None, reuse="stamp", reconvert_legacy=False):
+    """Convert one CYC folder; files already recorded in this project are not converted again."""
     from cyc2parquet.service import convert_folder
     project, source = Path(project).resolve(), Path(source).resolve()
     target = project / "converted" / (source.name + "_" + identity(str(source))[:10])
-    converted = convert_folder(source, target, progress=progress)
+    converted = convert_folder(source, target, progress=progress, known=conversion_record_roots(project),
+                               reuse=reuse, reconvert_legacy=reconvert_legacy)
     registered = scan_folder(project, target / "parquet", progress=progress) if (target / "parquet").is_dir() else {"summary": {"registered": 0}}
+    # Existing records normally live under an already registered root (sources/, converted/).
+    roots = _registered_roots(project)
+    folders = {str(Path(item["existing_manifest"]).parent / "parquet") for item in converted["files"] if item["status"] == "existing"}
+    extra = sorted(folder for folder in folders
+                   if not any(_resolved(folder).is_relative_to(root) for root in roots))
+    extra_scans = [scan_folder(project, folder, progress=progress) for folder in extra if Path(folder).is_dir()]
     stored = project / "native_sources.json"
     known = json.loads(stored.read_text(encoding="utf-8")) if stored.exists() else []
     atomic_json(stored, sorted(set(known + [str(source)])))
-    return {"conversion": converted, "library": registered, "output": str(target), "status": converted["status"]}
+    return {"conversion": converted, "library": registered, "existing_registered": len(extra_scans),
+            "output": str(target), "status": converted["status"]}
+
+
+def diagnose_conversions(project, *, extra_roots=(), out=None, probe_sources=False):
+    """Diagnose every conversion record in the project (failures, CTS gaps, stale failures)."""
+    from cyc2parquet.diagnose import diagnose_manifests, write_report
+    project = Path(project).resolve()
+    report = diagnose_manifests(conversion_record_roots(project) + [Path(root) for root in extra_roots], probe_sources=probe_sources)
+    report["outputs"] = write_report(report, Path(out) if out else project / "reports" / "conversion_diagnosis")
+    return {"status": "success", "summary": report["summary"], "recommendations": report["recommendations"],
+            "outputs": report["outputs"]}
 
 
 def refresh_project(project, *, progress=None, convert_sources=True):

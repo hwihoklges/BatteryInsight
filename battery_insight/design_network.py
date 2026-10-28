@@ -32,10 +32,16 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-CODE_VERSION = "design_network_v1"
+CODE_VERSION = "design_network_v2"
 
 # Design-relevant tag keys (equal weight) used for structural similarity.
-DESIGN_KEYS = ("material", "process", "cell_format", "supplier", "geometry", "anode")
+# Must match ``research_db.DESIGN_KEYS`` -- both read the same ``tags_json``/
+# ``design_fields_json`` produced by research_db's tag reclassification
+# (binder/active/composition ratios split out of the generic "material"
+# bucket; outsourcing batch/cell numbers moved out of "cell_format" into a
+# non-design "contract" key).
+DESIGN_KEYS = ("material", "composition", "active_ratio", "binder_ratio", "ratio",
+               "process", "cell_format", "supplier", "geometry", "anode")
 
 _TOKEN_SPLIT = re.compile(r"[\s,;/|]+")
 
@@ -205,6 +211,41 @@ def _metric_key(metric_id, window) -> str:
     return f"{metric_id}|{w}" if w else str(metric_id)
 
 
+def _cohort_comparison_exclusions(cohort: dict) -> list[str]:
+    exclusions = []
+    for field in ("test_type", "temperature_c", "c_rate_class", "v_window"):
+        value = cohort.get(field)
+        text = str(value).strip().lower() if value is not None else ""
+        unknown = (
+            not text or "?" in text
+            or text in {"-", "--", "—", "_", "n/a", "n.a.", "미상", "미정", "확인 필요"}
+            or re.search(
+                r"(?<![a-z0-9])(?:unknown|none|null|nan|na|n/a|n\.a\.|unspecified|missing|tbd)(?![a-z0-9])",
+                text,
+            )
+        )
+        if unknown or (field == "temperature_c" and _num(value) is None):
+            exclusions.append(f"missing_condition:{field}")
+    return exclusions
+
+
+def _metric_comparison_exclusions(metric: dict) -> list[str]:
+    unknown = _num(metric.get("n_unknown_censor_cells"))
+    if unknown is not None and unknown > 0:
+        return ["censoring_metadata_unknown"]
+    censored = _num(metric.get("n_censored_cells"))
+    if censored is not None and censored > 0:
+        return ["censored_cells"]
+    if metric.get("metric_id") == "cycles_to_80pct":
+        observed = _num(metric.get("n_observed_cells"))
+        total = _num(metric.get("n_cells"))
+        if censored is None or observed is None:
+            return ["censoring_metadata_missing"]
+        if censored != 0 or total is None or total <= 0 or observed != total or not total.is_integer():
+            return ["censoring_metadata_invalid"]
+    return []
+
+
 # --------------------------------------------------------------------------- #
 # Core build
 # --------------------------------------------------------------------------- #
@@ -309,6 +350,12 @@ def _collect(conn, cohort_filter=None, design_threshold=0.3):
             "min": _num(row.get("min")),
             "max": _num(row.get("max")),
         }
+        metric = metrics_index[ck][did][mkey]
+        for field in ("n_observed_cells", "n_censored_cells",
+                      "censor_lower_bound_min", "censor_lower_bound_max", "n_unknown_censor_cells"):
+            if field in row:
+                metric[field] = row[field]
+        metric["comparison_exclusions"] = _metric_comparison_exclusions(metric)
 
     # ---- cohorts ----
     cohort_list = []
@@ -320,7 +367,7 @@ def _collect(conn, cohort_filter=None, design_threshold=0.3):
         cohort_list.append({
             "cohort_key": ck,
             "test_type": c.get("test_type"),
-            "temperature_c": _num(c.get("temperature_c")),
+            "temperature_c": c.get("temperature_c"),
             "c_rate_class": c.get("c_rate_class"),
             "v_window": c.get("v_window"),
             "n_designs": int(c.get("n_designs") or 0),
@@ -339,6 +386,14 @@ def _collect(conn, cohort_filter=None, design_threshold=0.3):
             "c_rate_class": None, "v_window": None, "n_designs": len(design_ids),
             "n_cells": 0, "design_ids": design_ids, "useful": len(design_ids) >= 2,
         })
+    for c in cohort_list:
+        c["comparison_exclusions"] = _cohort_comparison_exclusions(c)
+        c["comparison_eligible"] = not c["comparison_exclusions"]
+        comparable_designs = sum(
+            any(m["mean"] is not None and not m["comparison_exclusions"] for m in mrow.values())
+            for mrow in metrics_index.get(c["cohort_key"], {}).values()
+        )
+        c["useful"] = c["comparison_eligible"] and comparable_designs >= 2
     cohort_list.sort(key=lambda c: (not c["useful"], c["cohort_key"]))
 
     if cohort_filter is not None:
@@ -373,15 +428,17 @@ def _collect(conn, cohort_filter=None, design_threshold=0.3):
     ec_edges = {}
     metrics_payload = {}
     percentiles = {}
+    eligible_cohorts = {c["cohort_key"] for c in cohort_list if c["comparison_eligible"]}
     for ck, dmap in metrics_index.items():
-        means = {did: {mk: cell["mean"] for mk, cell in mrow.items() if cell["mean"] is not None}
+        means = {did: {mk: cell["mean"] for mk, cell in mrow.items()
+                       if cell["mean"] is not None and not cell["comparison_exclusions"]}
                  for did, mrow in dmap.items()}
-        edges = electrochem_edges(means)
+        edges = electrochem_edges(means) if ck in eligible_cohorts else []
         for e in edges:
             e["weight"] = round(e["weight"], 6)
         ec_edges[ck] = edges
         metrics_payload[ck] = dmap
-        percentiles[ck] = _percentiles(dmap, hib)
+        percentiles[ck] = _percentiles(dmap, hib) if ck in eligible_cohorts else {did: {} for did in dmap}
 
     payload = {
         "project": None,
@@ -411,7 +468,9 @@ def _percentiles(dmap: dict, hib: dict) -> dict:
     by_metric: dict[str, dict] = {}
     for did, mrow in dmap.items():
         for mk, cell in mrow.items():
-            if cell["mean"] is None:
+            if cell["mean"] is None or _metric_comparison_exclusions(
+                {**cell, "metric_id": mk.split("|", 1)[0]}
+            ):
                 continue
             by_metric.setdefault(mk, {})[did] = cell["mean"]
 
@@ -426,7 +485,8 @@ def _percentiles(dmap: dict, hib: dict) -> dict:
                 pct = 50.0
             else:
                 below = sum(1 for _, o in items if o < v)
-                pct = below / (n - 1) * 100.0
+                equal = sum(1 for _, o in items if o == v)
+                pct = (below + (equal - 1) / 2) / (n - 1) * 100.0
             flipped = None
             if direction is False:
                 pct = 100.0 - pct
@@ -530,6 +590,7 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
 <body>
 <header>
   <h1>설계 네트워크 뷰어</h1>
+  <span class="muted" style="font-size:11px">"설계"는 파일명·슬라이드에서 자동 추출한 속성 태그 조합 후보입니다. 사람이 확정한 값이 아닙니다.</span>
   <span><label>코호트</label><select id="cohort"></select></span>
   <span><label>엣지</label>
     <select id="edgeMode">
@@ -547,6 +608,11 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
 <div id="layout">
   <div id="graph"><svg id="svg"></svg></div>
   <div id="side">
+    <details id="overviewPanel" open>
+      <summary style="cursor:pointer;font-size:13px">📋 데이터 현황 — 지금 무엇이 들어있는지</summary>
+      <div id="overview" style="margin-top:6px"></div>
+    </details>
+    <p id="comparisonWarning" class="muted" role="status"></p>
     <div id="selinfo"><p class="muted">노드를 클릭해 선택하세요 (최대 3개, 레이더/비교).</p></div>
     <h2>불일치(discordance) 테이블
       <span class="muted" style="font-weight:normal">
@@ -576,6 +642,76 @@ function getCss(v){ return getComputedStyle(document.documentElement).getPropert
 function metricLabel(mk){ const id = mk.split("|")[0]; const w = mk.split("|")[1];
   return (metricName[id]||id) + (w ? " ("+w+")" : ""); }
 
+/* ---- human-readable labels: raw tags are filename-extracted and sometimes mix
+   unrelated things (e.g. "cell_format" holding both physical format AND
+   contract-batch numbers). Show a short name on the graph, full breakdown on click. */
+const KEY_LABELS = {material:"소재", composition:"조성", active_ratio:"활물질비", binder_ratio:"바인더비",
+                    ratio:"성분비", process:"공정", anode:"음극", geometry:"형상",
+                    supplier:"공급사", cell_format:"셀 형태"};
+function esc(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function isBatchLike(v){
+  return /^(contract_batch|contract_cell|batch|lot)\b/i.test(String(v)) || /^\d{2,4}\s*도급/.test(String(v));
+}
+function primaryTag(d){
+  const f = d.fields||{};
+  for (const key of ["material","process","anode","geometry","supplier","cell_format"]) {
+    const vals = (f[key]||[]).filter(v=>!isBatchLike(v));
+    if (vals.length) return {key, value: vals.join("/")};
+  }
+  return null;
+}
+function shortLabel(d){
+  const p = primaryTag(d);
+  if (p) {
+    const extra = Object.keys(d.fields||{}).filter(k=>k!==p.key).length;
+    const text = p.value + (extra ? ` 외 ${extra}개` : "");
+    return text.length>34 ? text.slice(0,32)+"…" : text;
+  }
+  const label = d.label || d.design_id;
+  return label.length>34 ? label.slice(0,32)+"…" : label;
+}
+function renderFieldsTable(d){
+  const fields = d.fields||{};
+  const keys = Object.keys(fields);
+  if(!keys.length) return '<p class="muted">파일명에서 추출된 설계 속성이 없습니다(설계 묶음 근거 부족).</p>';
+  let rows = keys.map(k=>{
+    const vals = fields[k]||[];
+    const batchVals = vals.filter(isBatchLike);
+    const designVals = vals.filter(v=>!isBatchLike(v));
+    let cell = designVals.length ? designVals.map(esc).join(", ") : '<span class="muted">-</span>';
+    if(batchVals.length) cell += ` <span class="muted">(⚠ 도급/배치 번호: ${batchVals.map(esc).join(", ")} — 설계 아님)</span>`;
+    return `<tr><td>${KEY_LABELS[k]||k}</td><td>${cell}</td></tr>`;
+  }).join("");
+  return `<table><tr><th>속성</th><th>값 (파일명 기반, 미확정)</th></tr>${rows}</table>`;
+}
+function renderOverview(){
+  const box = document.getElementById("overview");
+  if (!box) return;
+  const designs = DATA.designs;
+  const nCand = designs.filter(d=>d.status==="candidate").length;
+  const nConf = designs.filter(d=>d.status==="confirmed").length;
+  const nCells = designs.reduce((s,d)=>s+(d.n_cells||0),0);
+  const nRuns = designs.reduce((s,d)=>s+(d.n_runs||0),0);
+  const keyStats = {};
+  designs.forEach(d=>Object.entries(d.fields||{}).forEach(([k,vs])=>{
+    const s = keyStats[k] = keyStats[k] || {values:new Set(), batch:new Set()};
+    (vs||[]).forEach(v => isBatchLike(v) ? s.batch.add(v) : s.values.add(v));
+  }));
+  let h = `<p>설계 노드 <b>${designs.length}개</b> (후보 ${nCand} · 확정 ${nConf}) · `+
+          `누적 셀 <b>${nCells}개</b> · run <b>${nRuns}개</b> · 코호트 <b>${DATA.cohorts.length}개</b> `+
+          `(비교 가능 ${DATA.cohorts.filter(c=>c.comparison_eligible).length}개)</p>`;
+  h += '<table><tr><th>속성 키</th><th>서로 다른 값</th><th>예시(최대 6개)</th></tr>';
+  Object.keys(KEY_LABELS).forEach(k=>{
+    const s = keyStats[k]; if(!s || (!s.values.size && !s.batch.size)) return;
+    const sample = [...s.values].slice(0,6).map(esc).join(", ");
+    const warn = s.batch.size ? ` <span class="muted">⚠ 도급/배치 번호 ${s.batch.size}종 혼입 — 설계 구분에 쓰지 말 것</span>` : "";
+    h += `<tr><td>${KEY_LABELS[k]}</td><td>${s.values.size}</td><td>${sample}${s.values.size>6?" …":""}${warn}</td></tr>`;
+  });
+  h += '</table>';
+  h += '<p class="muted">파일명·슬라이드에서 자동 추출한 태그 통계이며, 사람이 확정한 설계 목록이 아닙니다. 노드 라벨은 핵심 속성만 축약 표시하며, 전체 속성은 노드를 클릭하면 아래 "선택" 패널에 표로 나옵니다.</p>';
+  box.innerHTML = h;
+}
+
 /* ---- cohort selector: useful ones first, with counts ---- */
 function initCohorts(){
   const sel = document.getElementById("cohort");
@@ -591,6 +727,18 @@ function initCohorts(){
 }
 
 function currentCohort(){ return document.getElementById("cohort").value; }
+function cohortComparable(){
+  const c=DATA.cohorts.find(c=>c.cohort_key===currentCohort());
+  return !!c && c.comparison_eligible !== false;
+}
+function comparisonReason(reason){
+  const fields={test_type:"시험 유형",temperature_c:"온도",c_rate_class:"C-rate",v_window:"전압 범위"};
+  if(reason.startsWith("missing_condition:")) return fields[reason.split(":")[1]]+" 미확인";
+  return {censored_cells:"중도절단 포함 — 비교 제외",
+    censoring_metadata_unknown:"중도절단 여부 미확인 — 비교 제외",
+    censoring_metadata_missing:"중도절단 정보 없음 — 비교 제외",
+    censoring_metadata_invalid:"중도절단 정보 불일치 — 비교 제외"}[reason] || reason;
+}
 function ecEdges(ck){ return (DATA.electrochem_edges[ck]) || []; }
 function designEdgesFor(ids){
   const set = new Set(ids);
@@ -629,6 +777,9 @@ function layout(ids, edges){
 function render(){
   const ck = currentCohort();
   const cohort = DATA.cohorts.find(c=>c.cohort_key===ck);
+  document.getElementById("comparisonWarning").textContent =
+    cohort && cohort.comparison_eligible === false
+      ? "비교 제외: "+(cohort.comparison_exclusions||[]).map(comparisonReason).join(", ") : "";
   const ids = cohort ? cohort.design_ids.slice() : DATA.designs.map(d=>d.design_id);
   const mode = document.getElementById("edgeMode").value;
   const q = document.getElementById("search").value.trim().toLowerCase();
@@ -683,7 +834,7 @@ function render(){
     if (showLabels || hit || selected.includes(id)) {
       const t=document.createElementNS(SVG_NS,"text");
       t.setAttribute("x",r+3); t.setAttribute("y",3);
-      t.textContent = d.label.length>40 ? d.label.slice(0,38)+"…" : d.label;
+      t.textContent = shortLabel(d);
       g.appendChild(t);
     }
     g.addEventListener("click",()=>toggleSelect(id));
@@ -749,7 +900,11 @@ function renderSelection(){
     info.innerHTML='<b>선택:</b> '+selected.map(id=>{
       const d=byId[id]; return `${d.label} ${badge(d.status)} <span class="muted">(n_cells=${d.n_cells})</span>`;
     }).join(" · ");
-    const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+    const fieldBlocks=selected.map(id=>{
+      const d=byId[id];
+      return `<div style="margin-top:6px"><b>${esc(d.label)}</b> 설계 속성 (파일명 기반, 미확정)</div>`+renderFieldsTable(d);
+    }).join("");
+    info.innerHTML+=fieldBlocks;
     const refs=selected.map(id=>{
       const sl=byId[id].slides||[], sf=byId[id].slide_facts;
       if(!sl.length && !sf) return "";
@@ -777,8 +932,8 @@ function renderRadar(){
   const pc=DATA.percentiles[ck]||{};
   const sel=selected.filter(id=>pc[id]);
   if(!sel.length){ box.innerHTML='<p class="muted">선택된 설계의 코호트 지표가 없습니다.</p>'; return; }
-  const keys=cohortMetricKeys(ck).filter(k=> sel.some(id=>pc[id]&&pc[id][k]));
-  if(keys.length<3){ box.innerHTML='<p class="muted">레이더에 필요한 지표(≥3)가 부족합니다.</p>'; }
+  const keys=cohortMetricKeys(ck).filter(k=> sel.every(id=>pc[id]&&pc[id][k]));
+  if(keys.length<3){ box.innerHTML='<p class="muted">레이더에 필요한 공통 지표(≥3)가 부족합니다.</p>'; return; }
   const cx=160,cy=150,R=110,n=Math.max(keys.length,3);
   let svg=`<svg viewBox="0 0 440 310" style="height:300px">`;
   for(let ring=1;ring<=4;ring++){
@@ -819,7 +974,9 @@ function renderPair(){
     const ca=ma[k], cb=mb[k];
     const fa=fmtCell(ca), fb=fmtCell(cb);
     let delta="-", note="";
-    if(ca&&cb&&ca.mean!=null&&cb.mean!=null) delta=(ca.mean-cb.mean).toPrecision(4);
+    if(!cohortComparable()) note="조건 미확인 — 비교 제외";
+    else if([ca,cb].some(c=>c&&(c.comparison_exclusions||[]).length)) note="중도절단 관련 비교 제외";
+    else if(ca&&cb&&ca.mean!=null&&cb.mean!=null) delta=(ca.mean-cb.mean).toPrecision(4);
     else note = !ca||ca.mean==null ? lab(a)+" 결측" : lab(b)+" 결측";
     h+=`<tr><td>${metricLabel(k)}</td><td>${fa}</td><td>${fb}</td><td>${delta}</td><td class="muted">${note}</td></tr>`;
   });
@@ -827,7 +984,16 @@ function renderPair(){
   box.innerHTML=h;
 }
 function fmtCell(c){
-  if(!c||c.mean==null) return '<span class="muted">결측</span>';
+  if(!c) return '<span class="muted">결측</span>';
+  const exclusions=c.comparison_exclusions||[];
+  if(exclusions.length){
+    let detail=c.n_censored_cells!=null?` (중도절단 n=${c.n_censored_cells}/${c.n_cells})`:"";
+    if(c.n_unknown_censor_cells) detail+=` · 여부 미확인 n=${c.n_unknown_censor_cells}`;
+    if(c.censor_lower_bound_min!=null) detail+=` · 하한 ${(+c.censor_lower_bound_min).toPrecision(4)}`;
+    if(c.censor_lower_bound_max!=null) detail+=`–${(+c.censor_lower_bound_max).toPrecision(4)}`;
+    return '<span class="muted">'+exclusions.map(comparisonReason).join(", ")+detail+'</span>';
+  }
+  if(c.mean==null) return '<span class="muted">결측</span>';
   const sd=c.sd!=null?"±"+(+c.sd).toPrecision(3):"";
   return `${(+c.mean).toPrecision(4)}${sd} <span class="muted">(n=${c.n_cells})</span>`;
 }
@@ -837,6 +1003,7 @@ function fmtCell(c){
 document.getElementById("search").addEventListener("input",render);
 ["hi","lo"].forEach(id=>document.getElementById(id).addEventListener("input",render));
 initCohorts();
+renderOverview();
 render();
 </script>
 </body>

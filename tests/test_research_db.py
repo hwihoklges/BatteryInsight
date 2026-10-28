@@ -203,6 +203,7 @@ def test_defect_runs_excluded_from_aggregates(tmp_path):
                  ).to_parquet(Path(project) / "db" / "run_qc.parquet")
     summary = rdb.build_research_db(project)
     assert summary["qc_defect_runs"] == 1 and summary["qc_suspect_runs"] == 1
+    assert summary["qc_not_assessed_runs"] == 1
     conn = rdb.connect_ro(project)
     try:
         cm = conn.execute("SELECT value,n_runs FROM cell_metrics WHERE cell_id='pc:CELL1'").fetchone()
@@ -212,3 +213,210 @@ def test_defect_runs_excluded_from_aggregates(tmp_path):
         conn.close()
     assert cm["n_runs"] == 1 and cm["value"] == pytest.approx(10.0)   # defect A:ch2 (20) dropped
     assert runs["A:ch2"] == "defect" and runs["B:ch3"] == "suspect" and n_qc == 2
+    assert runs["A:ch1"] == "not_assessed"
+
+
+def _life_project(tmp_path, values, censored):
+    project = _base_project(tmp_path, with_metrics=True)
+    tests_path = project / "dx" / "dx_tests.csv"
+    tests = pd.read_csv(tests_path, dtype=str, keep_default_na=False)
+    tests.loc[1, "tags"] = tests.loc[0, "tags"]
+    tests.to_csv(tests_path, index=False)
+    metrics_path = project / "db" / "run_metrics.parquet"
+    metrics = pd.read_parquet(metrics_path)
+    metrics["metric_id"] = "cycles_to_80pct"
+    metrics["value"] = values
+    metrics["unit"] = "cycles"
+    metrics["censored"] = censored
+    metrics.to_parquet(metrics_path)
+    return project
+
+
+@pytest.mark.parametrize("flags,observed_cells", [
+    ([True, True, False], 1),
+    ([True, True, True], 0),
+    ([False, True, False], 1),
+])
+def test_censored_life_keeps_followup_without_failure_statistics(tmp_path, flags, observed_cells):
+    project = _life_project(tmp_path, [100, 200, 50], flags)
+    rdb.build_research_db(project)
+    conn = rdb.connect_ro(project)
+    try:
+        observations = [dict(r) for r in conn.execute("SELECT * FROM observations ORDER BY run_id")]
+        cell = conn.execute("SELECT * FROM cell_metrics WHERE cell_id='pc:CELL1'").fetchone()
+        design = conn.execute("SELECT * FROM design_metrics").fetchone()
+        cohort = conn.execute("SELECT cohort_key FROM cohorts").fetchone()[0]
+    finally:
+        conn.close()
+    assert [r["value"] for r in observations] == [100, 200, 50]
+    assert [r["censored"] for r in observations] == [int(flag) for flag in flags]
+    assert cell["value"] is None and cell["censored"] == 1
+    assert cell["n_runs"] == 2 and cell["n_censored_runs"] == sum(flags[:2])
+    assert cell["censor_lower_bound"] == 200
+    assert design["n_cells"] == 2
+    assert design["n_observed_cells"] == observed_cells
+    assert design["n_censored_cells"] == 2 - observed_cells
+    assert all(design[k] is None for k in ("mean", "sd", "median", "min", "max"))
+    assert design["censor_lower_bound_min"] == (50 if flags[2] else 200)
+    assert design["censor_lower_bound_max"] == 200
+    table = rdb.design_table(project, cohort)
+    assert table.iloc[0]["n_censored_cells"] == 2 - observed_cells
+
+
+def test_uncensored_life_retains_equal_cell_weight(tmp_path):
+    project = _life_project(tmp_path, [100, 200, 50], [False, False, False])
+    rdb.build_research_db(project)
+    conn = rdb.connect_ro(project)
+    try:
+        row = conn.execute("SELECT * FROM design_metrics").fetchone()
+    finally:
+        conn.close()
+    assert row["n_cells"] == row["n_observed_cells"] == 2
+    assert row["n_censored_cells"] == 0
+    assert row["mean"] == pytest.approx(100)
+    assert row["censor_lower_bound_min"] is None
+    assert row["censor_lower_bound_max"] is None
+
+
+def test_text_censor_flags_do_not_use_python_truthiness(tmp_path):
+    project = _life_project(tmp_path, [100, 200, 50], ["False", "0", "True"])
+    rdb.build_research_db(project)
+    conn = rdb.connect_ro(project)
+    try:
+        flags = [r[0] for r in conn.execute("SELECT censored FROM observations ORDER BY run_id")]
+        cell = conn.execute("SELECT value,censored FROM cell_metrics WHERE cell_id='pc:CELL1'").fetchone()
+    finally:
+        conn.close()
+    assert flags == [0, 0, 1]
+    assert tuple(cell) == (150, 0)
+
+
+@pytest.mark.parametrize("flag", [None, float("nan"), "", "unknown"])
+def test_missing_censor_flag_remains_unknown(flag):
+    assert rdb._censor_flag(flag) is None
+
+
+def test_observation_quality_excluded_without_erasing_raw(tmp_path):
+    project = _base_project(tmp_path, with_metrics=True)
+    metrics_path = project / "db" / "run_metrics.parquet"
+    metrics = pd.read_parquet(metrics_path)
+    metrics.loc[1, "quality"] = "insufficient"
+    metrics.loc[2, "quality"] = "partial"
+    metrics.to_parquet(metrics_path)
+    rdb.build_research_db(project)
+    conn = rdb.connect_ro(project)
+    try:
+        raw = conn.execute("SELECT value,quality FROM observations WHERE run_id='A:ch2'").fetchone()
+        cell = conn.execute("SELECT value,n_runs FROM cell_metrics WHERE cell_id='pc:CELL1'").fetchone()
+        n_cells = conn.execute("SELECT count(*) FROM cell_metrics").fetchone()[0]
+    finally:
+        conn.close()
+    assert tuple(raw) == (20, "insufficient")
+    assert tuple(cell) == (10, 1)
+    assert n_cells == 2
+
+
+def test_physical_cell_conflicting_designs_are_not_assigned_to_first_design(tmp_path):
+    project = _base_project(tmp_path, with_metrics=True)
+    files_path = project / "dx" / "dx_files.csv"
+    files = pd.read_csv(files_path, dtype=str, keep_default_na=False)
+    files.loc[2, "physical_cell_id"] = "CELL1"
+    files.to_csv(files_path, index=False)
+    summary = rdb.build_research_db(project)
+    assert summary["cells_design_conflict"] == 1
+    conn = rdb.connect_ro(project)
+    try:
+        cell = conn.execute("SELECT design_conflict,status FROM cells").fetchone()
+        assert tuple(cell) == (1, "confirmed")
+        assert conn.execute("SELECT count(*) FROM observations").fetchone()[0] == 3
+        assert conn.execute("SELECT count(*) FROM cell_metrics").fetchone()[0] == 0
+        assert conn.execute("SELECT count(*) FROM design_metrics").fetchone()[0] == 0
+        assert [r[0] for r in conn.execute("SELECT n_cells FROM designs")] == [1, 1]
+        assert conn.execute("SELECT count(DISTINCT design_id) FROM runs").fetchone()[0] == 2
+    finally:
+        conn.close()
+    gaps = pd.read_csv(project / "db" / "identity_gaps.csv")
+    assert gaps.gaps.str.contains("physical_cell_design_conflict").all()
+
+
+def test_repeats_do_not_pool_different_cohorts(tmp_path):
+    project = _base_project(tmp_path, with_metrics=True)
+    profile_path = project / "db" / "run_profile.parquet"
+    profile = pd.read_parquet(profile_path)
+    profile.loc[1, "c_rate_class"] = "1C/1C"
+    profile.to_parquet(profile_path)
+    rdb.build_research_db(project)
+    conn = rdb.connect_ro(project)
+    try:
+        cells = conn.execute(
+            "SELECT value,n_runs,censored FROM cell_metrics WHERE cell_id='pc:CELL1' ORDER BY value"
+        ).fetchall()
+    finally:
+        conn.close()
+    assert [tuple(r) for r in cells] == [(10, 1, 0), (20, 1, 0)]
+
+
+@pytest.mark.parametrize("value", [float("inf"), float("-inf"), float("nan")])
+def test_nonfinite_values_do_not_enter_statistics(tmp_path, value):
+    project = _base_project(tmp_path, with_metrics=True)
+    metrics_path = project / "db" / "run_metrics.parquet"
+    metrics = pd.read_parquet(metrics_path)
+    metrics.loc[1, "value"] = value
+    metrics.to_parquet(metrics_path)
+    rdb.build_research_db(project)
+    conn = rdb.connect_ro(project)
+    try:
+        cell = conn.execute("SELECT value,n_runs FROM cell_metrics WHERE cell_id='pc:CELL1'").fetchone()
+        assert conn.execute("SELECT count(*) FROM observations").fetchone()[0] == 3
+    finally:
+        conn.close()
+    assert tuple(cell) == (10, 1)
+
+
+def test_unknown_censoring_does_not_reenable_life_comparison(tmp_path):
+    from battery_insight.design_network import _collect
+
+    project = _life_project(tmp_path, [100, 200, 300], [False, None, False])
+    rdb.build_research_db(project)
+    conn = rdb.connect_ro(project)
+    try:
+        raw = conn.execute("SELECT censored FROM observations WHERE run_id='A:ch2'").fetchone()
+        cell = conn.execute("SELECT * FROM cell_metrics WHERE cell_id='pc:CELL1'").fetchone()
+        design = conn.execute("SELECT * FROM design_metrics").fetchone()
+        payload = _collect(conn)
+    finally:
+        conn.close()
+    assert raw["censored"] is None
+    assert cell["value"] is None and cell["censored"] is None
+    assert cell["n_unknown_censor_runs"] == 1 and cell["n_runs"] == 2
+    assert design["n_cells"] == 2 and design["n_observed_cells"] == 1
+    assert design["n_censored_cells"] == 0 and design["n_unknown_censor_cells"] == 1
+    assert all(design[k] is None for k in ("mean", "sd", "median", "min", "max"))
+    metric = payload["design_metrics"][design["cohort_key"]][design["design_id"]]["cycles_to_80pct"]
+    assert metric["comparison_exclusions"] == ["censoring_metadata_unknown"]
+    assert not payload["percentiles"][design["cohort_key"]][design["design_id"]]
+
+
+@pytest.mark.parametrize("temperature", ["25", ""])
+def test_research_network_integration_retains_original_conditions(tmp_path, temperature):
+    from battery_insight.design_network import _collect
+
+    project = _base_project(tmp_path, with_metrics=True)
+    tests_path = project / "dx" / "dx_tests.csv"
+    tests = pd.read_csv(tests_path, dtype=str, keep_default_na=False)
+    tests["temperature_c"] = temperature
+    tests.to_csv(tests_path, index=False)
+    rdb.build_research_db(project)
+    conn = rdb.connect_ro(project)
+    try:
+        before = [tuple(r) for r in conn.execute("SELECT test_key,temperature_c,tags FROM tests")]
+        payload = _collect(conn)
+        assert [tuple(r) for r in conn.execute("SELECT test_key,temperature_c,tags FROM tests")] == before
+    finally:
+        conn.close()
+    cohort = payload["cohorts"][0]
+    assert cohort["comparison_eligible"] is bool(temperature)
+    assert cohort["temperature_c"] == (temperature or None)
+    if not temperature:
+        assert cohort["comparison_exclusions"] == ["missing_condition:temperature_c"]
+        assert all(not values for values in payload["percentiles"][cohort["cohort_key"]].values())

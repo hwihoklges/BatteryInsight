@@ -11,7 +11,7 @@ import tempfile
 
 from . import __version__
 
-COMMANDS = {"desktop", "cyc-import", "library-scan", "library-export", "library-assign", "library-rules",
+COMMANDS = {"desktop", "cyc-import", "cyc-diagnose", "library-scan", "library-export", "library-assign", "library-rules",
             "library-open", "library-documents", "library-candidates", "library-link", "library-features", "self-test", "check-gui", "version",
             "trace-extract", "trace-import", "trace-review", "trace-report", "trace-export", "trace-demo",
             "copilot-check", "copilot-prepare", "copilot-run", "copilot-import", "db-build", "network", "slide-link"}
@@ -186,7 +186,11 @@ def main(argv=None):
                 elif args.command == "cyc-import":
                     if not args.input:
                         raise ValueError("--input CYC 폴더가 필요합니다.")
-                    result = library.convert_and_register(args.project, args.input)
+                    result = library.convert_and_register(args.project, args.input,
+                                                          reuse="none" if args.force else "stamp")
+                elif args.command == "cyc-diagnose":
+                    result = library.diagnose_conversions(args.project, extra_roots=[args.input] if args.input else (),
+                                                          out=args.out, probe_sources=args.verify_raw)
                 elif args.command == "library-scan":
                     if not args.input:
                         raise ValueError("--input Parquet 폴더가 필요합니다.")

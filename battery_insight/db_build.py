@@ -28,14 +28,17 @@ def _code(module):
     return hashlib.sha256(Path(module.__file__).read_bytes()).hexdigest()[:16]
 
 
-def _fingerprint(inputs, modules):
-    payload = {"inputs": {str(p): _stat(p) for p in inputs}, "code": [_code(m) for m in modules]}
+def _fingerprint(inputs, modules, settings=None):
+    payload = {"inputs": {str(p): _stat(p) for p in inputs}, "code": [_code(m) for m in modules],
+               "settings": settings or {}}
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
 
 def build_database(project, *, workers=8, network=True, force=False, profile_every=10, progress=print):
     """``profile_every``: keep a resampled V–Q curve every N-th cycle (+special cycles); 0 disables."""
     from . import derived_cycles, derived_steps, research_db, run_metrics
+    if isinstance(profile_every, bool) or not isinstance(profile_every, int) or profile_every < 0:
+        raise ValueError("profile_every must be a non-negative integer")
     project = Path(project).resolve()
     db = project / "db"
     db.mkdir(parents=True, exist_ok=True)
@@ -49,9 +52,9 @@ def build_database(project, *, workers=8, network=True, force=False, profile_eve
     dx = project / "dx"
     derived = project / "derived"
 
-    def stage(name, function, inputs, outputs, modules):
+    def stage(name, function, inputs, outputs, modules, settings=None):
         begin = time.perf_counter()
-        key = _fingerprint(inputs, modules)
+        key = _fingerprint(inputs, modules, settings)
         if state.get(name) == key and all(Path(p).exists() for p in outputs):
             stages[name] = {"seconds": round(time.perf_counter() - begin, 1), "result": "unchanged"}
             if progress:
@@ -61,7 +64,7 @@ def build_database(project, *, workers=8, network=True, force=False, profile_eve
             progress(f"[{name}] 시작")
         value = function()
         # Fingerprint after the run so the stage's own outputs (e.g. sidecar dirs) are captured.
-        state[name] = _fingerprint(inputs, modules)
+        state[name] = _fingerprint(inputs, modules, settings)
         state_path.write_text(json.dumps(state, indent=1), encoding="utf-8")
         stages[name] = {"seconds": round(time.perf_counter() - begin, 1), "result": _brief(value)}
         if progress:
@@ -79,7 +82,7 @@ def build_database(project, *, workers=8, network=True, force=False, profile_eve
         profiles = db / "cycle_profiles.parquet"
         stage("profiles", lambda: cycle_profiles.build_cycle_profiles(project, every=profile_every, workers=workers,
                                                                       progress=progress),
-              [library_db, summary, profiles, f"every={profile_every}"], [profiles], [cycle_profiles])  # setting is part of the key
+              [library_db, summary, profiles], [profiles], [cycle_profiles], {"every": profile_every})
     stage("run_metrics", lambda: run_metrics.build_run_metrics(project, workers=workers),
           [library_db, summary, dx / "dx_files.csv"], run_outputs, [run_metrics])
     from . import cell_qc
@@ -89,15 +92,31 @@ def build_database(project, *, workers=8, network=True, force=False, profile_eve
     from . import metric_validation
     stage("validation", lambda: _validation_brief(metric_validation.validate_metrics(project, workers=workers)),
           [library_db, steps_dir], [db / "metric_validation.json"], [metric_validation, derived_cycles])
+    from . import slide_link, slide_review, slide_context, slide_facts, evidence_links
+    slides = project / "slides"
+    slide_index = slides / "slide_index.parquet"
     stage("research_db", lambda: research_db.build_research_db(project),
           [dx / "dx_files.csv", dx / "dx_tests.csv", db / "design_map.csv", *run_outputs[:2], qc_out,
-           project / "slides" / "slide_test_links.parquet"],
-          [db / "research.sqlite3"], [research_db, run_metrics])
+           slide_index, slides / slide_review.REVIEW_FILE],
+          [db / "research.sqlite3", db / "research.xlsx", db / "identity_gaps.csv", db / "design_candidates.csv"],
+          [research_db, run_metrics, slide_link, slide_review, evidence_links])
+    if slide_index.exists():
+        stage("slide_links", lambda: _brief_slides(slide_link.build_slide_link(
+            project, workers=workers, log=progress or (lambda *_: None), refresh_network=False)),
+            [slide_index, slides / slide_review.REVIEW_FILE, dx / "dx_tests.csv", *run_outputs, qc_out,
+             db / "research.sqlite3"],
+            [*(slides / f"{t}.parquet" for t in (*slide_link.SLIDE_TABLES, *slide_link.SLIDE_TABLES_OPT)),
+             slides / "slide_link_report.xlsx", db / "research.xlsx"],
+            [slide_link, slide_review, slide_context, slide_facts, evidence_links])
     if network:
         from . import design_network
         stage("network", lambda: str(design_network.build_network(project)),
-              [db / "research.sqlite3"], [db / "network.html"], [design_network])
+              [db / "research.sqlite3"], [db / "network.html", db / "network.json"], [design_network])
     return {"project": str(project), "seconds": round(time.perf_counter() - started, 1), "stages": stages}
+
+
+def _brief_slides(result):
+    return {"links": len(result["links"]), "test_facts": len(result["test_facts"])}
 
 
 def _validation_brief(summary):

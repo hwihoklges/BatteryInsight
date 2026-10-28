@@ -1,6 +1,9 @@
+import json
 import sqlite3
+from contextlib import closing
 
 import pandas as pd
+import pytest
 from pptx import Presentation
 from pptx.util import Inches
 
@@ -109,6 +112,12 @@ def test_review_overrides_links_and_writes_slide_facts(tmp_path):
         assert d2[0] == 1 and d2[1] == 1 and "ZQ82" in d2[2]
         assert "D2" in set(res["design_facts"]["design_id"])
         assert c.execute("select count(*) from slide_link_review").fetchone()[0] == 3
+        source = c.execute("select status, reviewer_kind, human_confirmed from evidence_sources "
+                           "where test_key='b2'").fetchone()
+        assert source == ("eligible", "agent", 0)
+        inferred = c.execute("select proposed_value, status from evidence_attributes "
+                             "where test_key='b2' and field='temperature_c'").fetchone()
+        assert inferred == (25.0, "candidate")
         assert c.execute("select review_status from v_test_slides where test_key='b2'").fetchone()[0] == "link"
         assert c.execute("select ctx_reason from v_test_slide_facts where test_key='c3'").fetchone()[0] == "사이클 데이터 없음"
         assert c.execute("select ctx_reason from v_test_slide_facts where test_key='b2'").fetchone()[0] is None
@@ -129,6 +138,93 @@ def test_family_key_groups_versions():
     assert k("260902 (update) 건조 task 정리.pptx") == k("260830 건조 task 정리.pptx")
     assert k("261007 반제품 드라이룸 노출 평가_v4.1.pptx") == k("260930 반제품 드라이룸 노출 평가_v3_이수현.pptx")
     assert k("260519 SJ1300B 평가.pptx") != k("260519 SJ1300A 평가.pptx")
+
+
+def test_human_review_wins_and_cached_refresh_uses_current_qc(tmp_path):
+    root, proj = _project(tmp_path)
+    review = [
+        dict(test_key="a1", decision="link", file_name="260720 ZQ 평가_v1.pptx", slide_no="1",
+             set_label="Set1", confidence="high", reviewer="agent-2"),
+        dict(test_key="b2", decision="link", file_name="260720 ZQ 평가_v1.pptx", slide_no="1",
+             set_label="Set2", confidence="high", reviewer="agent"),
+        dict(test_key="a1", decision="no_slide", note="not this experiment", reviewer="researcher"),
+    ]
+    pd.DataFrame(review).to_csv(proj / "slides" / sr.REVIEW_FILE, index=False)
+    first = sl.build_slide_link(proj, [root], log=lambda *_: None)
+    assert "a1" not in set(first["links"]["test_key"])
+    assert sr.review_status(pd.DataFrame(review))["a1"] == "no_slide"
+    assert first["test_facts"].set_index("test_key").loc["b2", "db_ice_pct"] > 80
+    pd.DataFrame([dict(run_id="b2:ch1", qc_status="defect", qc_reasons="excluded")]).to_parquet(
+        proj / "db" / "run_qc.parquet")
+    second = sl.build_slide_link(proj, log=lambda *_: None)
+    assert pd.isna(second["test_facts"].set_index("test_key").loc["b2", "db_ice_pct"])
+    assert second["test_facts"].set_index("test_key").loc["b2", "db_cycle_basis"] == "no_eligible_cycles"
+    with sqlite3.connect(proj / "db" / "research.sqlite3") as conn:
+        assert conn.execute("SELECT db_ice_pct FROM test_slide_facts WHERE test_key='b2'").fetchone() == (None,)
+    excel = pd.read_excel(proj / "db" / "research.xlsx", sheet_name="test_slide_facts")
+    assert pd.isna(excel.set_index("test_key").loc["b2", "db_ice_pct"])
+
+
+def test_summary_values_belong_to_primary_source_and_distinct_sets_survive(tmp_path):
+    root, proj = _project(tmp_path)
+    pd.DataFrame([
+        dict(test_key="a1", decision="link", file_name="260720 ZQ 평가_v1.pptx", slide_no="1",
+             set_label=label, confidence="high", reviewer="agent")
+        for label in ("Set1", "Set2")
+    ]).to_csv(proj / "slides" / sr.REVIEW_FILE, index=False)
+    result = sl.build_slide_link(proj, [root], log=lambda *_: None)
+    links = result["links"]
+    assert len(links[links["test_key"] == "a1"]) == 2
+    links = links[links["test_key"] == "a1"].copy()
+    links["score"] = [30, 25]
+    links.iloc[0, links.columns.get_loc("set_metrics")] = '{"ice_pct":90}'
+    links.iloc[1, links.columns.get_loc("set_metrics")] = '{"discharge_1st_mah_g":123}'
+    facts = sr.build_test_facts(links, sr.load_review(proj), sl._load_tests(proj), sl.test_cycle_facts(proj))
+    row = facts.set_index("test_key").loc["a1"]
+    assert json.loads(row["slide_metrics_json"]) == {"ice_pct": 90}
+    assert pd.isna(row["implied_active_mass_mg"])
+
+
+def test_duplicate_deck_names_need_explicit_path(tmp_path):
+    root, proj = _project(tmp_path)
+    source = root / "홍길동" / "260720 ZQ 평가_v1.pptx"
+    duplicate = root / "임꺽정" / source.name
+    duplicate.parent.mkdir()
+    duplicate.write_bytes(source.read_bytes())
+    review = dict(test_key="a1", decision="link", file_name=source.name, slide_no="1", set_label="Set1",
+                  confidence="high", reviewer="human", evidence="Review of exact source Set")
+    pd.DataFrame([review]).to_csv(proj / "slides" / sr.REVIEW_FILE, index=False)
+    result = sl.build_slide_link(proj, [root], log=lambda *_: None)
+    assert list(result["review_unresolved"]["test_key"]) == ["a1"]
+    review["file_path"] = str(source)
+    pd.DataFrame([review]).to_csv(proj / "slides" / sr.REVIEW_FILE, index=False)
+    resolved = sl.build_slide_link(proj, log=lambda *_: None)
+    assert resolved["review_unresolved"].empty
+    assert list(resolved["links"].query("test_key == 'a1'")["file_path"]) == [str(source)]
+    with sqlite3.connect(proj / "db" / "research.sqlite3") as conn:
+        assert conn.execute("SELECT status FROM evidence_sources WHERE test_key='a1'").fetchone() == ("eligible",)
+
+
+def test_multi_set_label_does_not_inherit_first_set():
+    sets = pd.DataFrame([dict(set_no=1, set_label="Set1: A"), dict(set_no=3, set_label="Set3: B")])
+    assert sr._sets_for_label("Set1-3", [0, 1], sets) == []
+    assert sr._sets_for_label("Set1 and Set3", [0, 1], sets) == []
+    assert sr._sets_for_label("Set#1", [0, 1], sets) == [0]
+    assert sr._sets_for_label("Set1_ref", [0, 1], sets) == [0]
+
+
+@pytest.mark.parametrize("missing", ["evidence", "reviewer"])
+def test_empty_raw_review_metadata_does_not_create_inference(tmp_path, missing):
+    root, proj = _project(tmp_path)
+    row = dict(test_key="a1", decision="link", file_name="260720 ZQ 평가_v1.pptx", slide_no="1",
+               set_label="Set1", confidence="high", reviewer="agent", evidence="Checked exact Set",
+               slide_conditions="25℃")
+    row[missing] = ""
+    pd.DataFrame([row]).to_csv(proj / "slides" / sr.REVIEW_FILE, index=False)
+    sl.build_slide_link(proj, [root], log=lambda *_: None)
+    with closing(sqlite3.connect(proj / "db" / "research.sqlite3")) as conn:
+        assert conn.execute("SELECT status FROM evidence_sources WHERE test_key='a1'").fetchone() == ("rejected",)
+        assert conn.execute("SELECT COUNT(*) FROM evidence_attributes WHERE test_key='a1'").fetchone()[0] == 0
 
 
 def test_review_status_priority_and_load(tmp_path):

@@ -87,7 +87,8 @@ class BatteryInsightApp:
         actions = ttk.Frame(frame)
         actions.pack(fill="x")
         for text, command in (("CYC 폴더 대기 목록에 추가", self.convert), ("Parquet 폴더 등록", self.scan),
-                              ("변경 반영", self.refresh_all), ("선택 실험 정보", self.edit_metadata), ("표 새로고침", self.reload)):
+                              ("변경 반영", self.refresh_all), ("변환 진단", self.diagnose_conversions),
+                              ("선택 실험 정보", self.edit_metadata), ("표 새로고침", self.reload)):
             self.button(actions, text, command).pack(side="left", padx=(0, 5))
         ttk.Label(frame, text="원본 데이터는 보존합니다. 파일명 후보는 미확인 정보이며, 확인한 설계·조건·단위만 비교에 사용합니다.", wraplength=1050).pack(anchor="w", pady=8)
         self.conversion_queue = FolderQueue(frame, on_start=self.start_conversion,
@@ -271,6 +272,11 @@ class BatteryInsightApp:
     def refresh_all(self):
         project = self.project_root()
         self.task("Parquet 변경 반영·분류 규칙 적용", lambda: library.refresh_project(project, progress=self.progress, convert_sources=False))
+
+    def diagnose_conversions(self):
+        project = self.project_root()
+        self.task("CYC 변환 기록 진단", lambda: library.diagnose_conversions(project),
+                  after=lambda result: self.open_path(result["outputs"]["html"]))
 
     def watch(self):
         if self.auto.get() and not self.busy:

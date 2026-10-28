@@ -2,6 +2,30 @@
 
 ## 3.5.x: 빌드 효율화, 사이클 V–Q 프로파일, 장표↔실험 연결
 
+### 2026-10-26 재검토: 출처와 갱신 일관성
+
+- `db-build`는 저장된 `slides\slide_index.parquet`가 있으면 QC·검토·설계 변경 뒤 장표 대조와 DB/Excel도 갱신합니다. 새 장표의 추가·변경 탐색은 기존 `slide-link --slides ...`로 실행합니다.
+- 모든 채널이 제외된 시험은 장표 대조에 다시 넣지 않습니다. `test_slide_facts.db_qc_excluded_runs`와 `db_cycle_basis`로 제외 개수와 집계범위를 확인할 수 있습니다.
+- 사람의 명시적 검토는 에이전트 검토보다 우선합니다. 동일 파일명이 여러 경로에 있으면 `slide_link_review.csv`의 `file_path`를 지정해야 하며, 모호한 Set 여러 개의 수치를 한 Set으로 합치지 않습니다.
+- `test_slide_facts`의 대표 수치는 표시된 파일·페이지·Set에서만 가져옵니다. 다른 연결 장표의 값은 `slide_test_links`에 출처별로 보존합니다(기존 46 test에서 대표 출처 외 수치가 혼합되어 있었음).
+- 프로파일 저장 간격 변경과 산출물 삭제도 증분 빌드가 감지합니다. 원본 데이터·장표·사용자 검토표는 수정하지 않습니다.
+
+#### 근거 기반 관계·속성 제안
+
+- `evidence_links.py`가 같은 **파일·페이지·유일하게 식별된 검토 Set**을 참조하는 시험과 설계를 `common_set` 후보로 연결합니다. 같은 셀·같은 설계라는 뜻이 아니며, 사람 이름이나 설계 ID를 합치지 않습니다. 다른 페이지로 추론을 연쇄 전파하지 않습니다.
+- `research.sqlite3`와 `research.xlsx`의 `evidence_sources`(원문·출처·채택/거절 이유), `evidence_links`(관계 후보), `evidence_attributes`(온도·압력·설계 속성 제안)에 기록합니다. `v_evidence_link_candidates`는 중복 출처를 묶은 관계 요약이며, `v_evidence_link_sources`, `v_evidence_attribute_sources`, `v_evidence_design_attributes`에서 근거를 추적합니다.
+- 기존 열은 덮어쓰지 않습니다. 충돌은 `conflict`/`blocked_conflict`로 남기고, 빈 검토 근거·검토자, 다중 Set 범위, 모호한 파일 참조는 추론에서 제외합니다. Set 속성은 해당 Set 범위의 제안이지 설계 전체에 대한 확정값이 아닙니다.
+- 에이전트 검토의 기존 `confirmed` 표시는 **사람 확인 완료를 뜻하지 않습니다**. 새 추론 표의 `human_confirmed`는 모두 0입니다. 장표 버전·사본은 종속 근거로 묶으며, 사본 수가 많다고 확신을 높이지 않습니다.
+- 실데이터: 근거 589개 중 191개가 추론 요건을 충족합니다. 시험 관계 14개·설계 관계 4개가 후보이며, 충돌 관계 14개는 보류했습니다. 속성 근거 216행 중 후보 159행은 중복 출처를 제외하면 **온도 69개·압력 54개 제안**입니다. 제안값은 검토 후 기존 DX/설계 매핑에 입력해야 비교 조건으로 사용됩니다.
+
+#### 통계·비교 안전장치와 검증
+
+- 80% 유지율에 아직 도달하지 않은 수명은 관측된 실패 시점이 아니라 `censored` 하한입니다. 셀/설계에 검열·검열 여부 미상 값이 섞이면 수명 평균·중앙값을 비우고 관측/검열/미상 개수와 추적 하한을 기록합니다. 생존분석 추정값을 계산한 것은 아닙니다.
+- 같은 물리 셀에 다른 설계가 할당되면 `cells.design_conflict`로 보류합니다. 관측 자체의 품질 부족도 요약에서 제외하며 원래 관측값은 보존합니다.
+- 시험종류·온도·C-rate·전압창이 불명확하면 전기화학 유사도 간선·순위·차이 비교를 막습니다. 설계 구조 연결과 데이터 조회는 유지합니다. 현재 59개 코호트 중 조건 요건 충족은 13개이며, 구조 간선 701개·전기화학 간선 30개입니다.
+- 2026-10-26 최종 확인: **819 tests passed, 3 skipped, 20 subtests passed**. PNE_initial DB·엑셀을 재생성하고 QC 반영, 관측 8,519행 보존, 입력표 3개의 SHA-256 불변, 추론 출처, 검열 통계, 네트워크 조건 제한을 확인했습니다. 변경 없는 재실행은 9단계 모두 건너뛰며 약 0.5초입니다.
+- 이번 실데이터 점검 기록: `projects\PNE_initial\db\review_validation.json`. 결과 조회는 `db\research.xlsx`, `slides\slide_link_report.xlsx`, `db\network.html`을 사용합니다.
+
 ```powershell
 python -m battery_insight db-build --project D:/BIProject --profile-every 10      # 0이면 프로파일 단계 끔
 python -m battery_insight slide-link --project D:/BIProject --slides "D:/2026/장표/2팀" "D:/2026/장표/4팀"
@@ -25,7 +49,7 @@ python -m battery_insight slide-link --project D:/BIProject --slides "D:/2026/�
     - `design_slide_facts`: DB 설계별 장표 설계 문구·조건, 속성 합의/불일치, 장표 설계 문구 종류 수(2종 이상이면 설계 묶음 점검), 평균 ICE
     - `owner_candidates`: 이름 없는 사번의 담당자 후보(제안만; `dx/owners.csv`는 바꾸지 않음)
     - `test_context`: 데이터만 있는 test의 정황(추정 이유·근거, 시험 역할, 보고 시점, 같은 실험군과 그 장표, 데이터 신호)
-    - 뷰 `v_test_slides`, `v_test_slide_facts`. `db-build`로 DB를 다시 만들어도 유지되며, 설계 네트워크에서 노드를 선택하면 검토 확정 장표(✓)와 장표 설계 문구가 보입니다.
+    - 뷰 `v_test_slides`, `v_test_slide_facts`. `db-build`로 DB를 다시 만들어도 유지되며, 설계 네트워크에서 노드를 선택하면 검토 연결 장표(✓, 에이전트 검토 포함)와 장표 설계 문구가 보입니다.
   - 시트: 요약 / 담당자별 / 장표O_데이터X / 장표Set_데이터X / 덱요약 / 데이터O_장표X / 데이터만 정황 / 둘다(설계) / 설계별장표 / test별 장표사실 / 설계별 장표사실 / 검토결과 / 자동매칭 검증 / 사번 담당자 후보 / 덱 버전군 / 수치대조 / 조건충돌 / 링크후보.
 
 ## 3.5.0: 설계 비교 DB와 설계 거미줄
@@ -41,7 +65,11 @@ python -m battery_insight network --project D:/BIProject           # db/network.
 - 설계 확정: `design_candidates.csv`의 행을 `design_map.csv`에 복사하고 `design_id`/`design_label`을 채우면 다음 빌드부터 확정 설계로 묶입니다(`match_type`: test_key > series_key > candidate > tags). `design_map.csv`는 빌드가 덮어쓰지 않습니다.
 - 셀 확정: `dx/dx_files.csv`의 `physical_cell_id`를 채우면 같은 셀의 반복 run이 한 표본(중앙값)으로 묶입니다. 비어 있으면 run 단위 *provisional* 셀입니다.
 - 이상 시험(`dx_tests.csv`의 `anomaly`: 채널 이상 등)은 관측값은 보존하되 셀·설계 요약에서 제외합니다.
-- **불량 셀 자동 제외** (`cell_qc.py`, `db-build`의 `cell_qc` 단계): 각 채널을 같은 test의 *다른* 채널 중앙값과 비교합니다(무게가 셀마다 달라 Ah 절대값은 판정에 쓰지 않음). `defect` 규칙: 다른 채널은 방전되는데 충전만 됨(dead), ICE가 5 %p 이상 낮음, CE 중앙값이 2 %p 이상 낮음(같은 프로토콜끼리), 80 % 도달 사이클이 다른 채널의 절반 미만(다른 채널 20사이클 이상). 첫 방전 용량 0.85배 미만/1.15배 초과는 `suspect`만 줍니다. 비교 채널이 1개뿐이면 차이가 2배(ICE 10 %p 등)여야 `defect`, 3채널 이상 test에서 절반 이상이 같은 규칙에 걸리면 어느 쪽이 정상인지 모르므로 `suspect`로 보류합니다. 1채널 test는 ICE 50 % 미만만 `suspect`입니다. 결과는 `db/run_qc.parquet`, DB `run_qc` 표, `runs.qc_status`/`qc_reasons`에 들어가고, `defect` run은 셀·설계 요약과 장표 수치 대조(test 중앙값)에서 빠집니다(관측값은 보존). 기준은 `<project>/criteria.json`의 `cell_qc`(첫 빌드에 기본값으로 생성), 사람 판정은 `dx/cell_qc_override.csv`(`run_id`에 run 또는 test_key, `decision` keep/exclude, `note`)가 자동 판정보다 우선합니다. PNE_initial: 1,342 run 중 defect 46(41 test), suspect 66.
+- **셀 QC와 자동 제외** (`cell_qc.py`, `db-build`의 `cell_qc` 단계): 같은 test·알려진 프로토콜·비교 가능한 초기 상태의 다른 채널 중앙값과 비교합니다. `defect`는 물리 불량 확정이 아니라 **집계에서 자동 제외하는 상대 이상치**입니다. ICE −5 %p, CE −2 %p, 80 % 도달 사이클 0.5배 미만(비교 채널 20사이클 이상)이 기본 기준입니다. 완전 사이클 2개 이상 등 근거가 필요하며, 한 비교 채널뿐이면 기준을 강화하고 과반 이상 같은 규칙에 걸리면 판정을 보류합니다. 충전만 기록됐거나 첫 사이클이 불완전한 경우와 용량 0.85배 미만/1.15배 초과는 `suspect`까지만 부여합니다.
+  - 상태: `defect`(자동 제외), `suspect`(보류·집계 유지), `ok`(평가 가능한 규칙 통과), `not_assessed`(근거 부족). `ok`도 모든 규칙이 평가됐다는 뜻은 아닙니다. `run_qc.qc_assessed_rules`·`qc_not_assessed`에 규칙별 평가범위를 남깁니다.
+  - 결과: `db\run_qc.parquet`, SQLite/Excel `run_qc`, `runs.qc_status`·`qc_reasons`. 사이클 없는 195 run도 미판정으로 기록하고 사람의 제외·유지 판정을 적용합니다. 관측값은 삭제하지 않습니다.
+  - 설정: `<project>\criteria.json`의 선택 항목 `cell_qc`(없으면 기본값, 자동 생성/덮어쓰기 안 함). `dx\cell_qc_override.csv`의 `run_id` 또는 `test_key`, `decision`(`keep`/`exclude`), `note`로 재정의합니다. run 판정이 test 판정보다 우선하며, 잘못된 기준·판정·없는 ID는 오류로 알립니다.
+  - 2026-10-26 재검토: 전체 1,537 run → 자동 제외 17, 의심 123, 평가 규칙 통과 637, 미판정 760. 기존 제외 46개 중 29개는 불완전 시작·비교 근거 부족 등으로 보류/미판정으로 변경했습니다.
 - 데스크톱 **지표·관계망·분석** 탭: *설계 비교 DB 갱신*, *설계 관계망 열기*, *설계 확정표 열기*.
 - CYC → Parquet 변환기는 별도 패키지 [`cyc2parquet`](../cyc2parquet)로 분리했습니다(`pip install -e ../cyc2parquet`). BatteryInsight는 이를 의존성으로 사용합니다.
 
