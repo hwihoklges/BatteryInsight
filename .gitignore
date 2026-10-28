@@ -51,6 +51,7 @@ htmlcov/
 !/battery_insight/resources/catalog/**/*.csv
 !/battery_insight/resources/catalog/**/*.parquet
 !/examples/**/*.csv
+!/examples/**/*.json
 !/demo_knowledge/knowledge_review/records.csv
 !/demo_knowledge/*.pptx
 

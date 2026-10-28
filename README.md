@@ -235,6 +235,12 @@ python -m battery_insight run --config ../../work/demo_input/demo.json --out ../
 
 출력된 `runs/<run_id>/report.html`을 열면 검토 표를 볼 수 있다. 이 예제는 **가상 셀 1개, 8사이클**이며 실제 성능이나 실제 이상 판정이 아니다.
 
+저장소에는 바로 실행해 볼 수 있는 생성 결과물을 `examples/demo_data/`(`SYNTHETIC_demo.csv` + `demo.json`)로도 포함했다. 둘 다 `make_demo.py`가 만든 가상 데이터이며, 실제 PNE 측정값이나 셀/시험 식별자가 아니다.
+
+```powershell
+python -m battery_insight run --config examples/demo_data/demo.json --out work/demo_lake
+```
+
 실제 데이터 설정은 `examples/run.template.json`을 복사해 경로·셀/시험 ID·단위·시험 종류를 확인한 뒤 사용한다.
 
 ```powershell

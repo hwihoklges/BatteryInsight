@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "chunk_rows": 73,
+  "max_cycle_rows": 2000000,
+  "sources": [
+    {
+      "path": "SYNTHETIC_demo.csv",
+      "cell_id": "SYNTHETIC_CELL",
+      "test_id": "SYNTHETIC_TEST",
+      "test_type": "Cycle",
+      "current_polarity": "charge_positive",
+      "columns": {
+        "cycle": {
+          "column": "cycle"
+        },
+        "step_id": {
+          "column": "step"
+        },
+        "time_s": {
+          "column": "time",
+          "unit": "s"
+        },
+        "step_time_s": {
+          "column": "step_time",
+          "unit": "s"
+        },
+        "voltage_v": {
+          "column": "voltage",
+          "unit": "V"
+        },
+        "current_a": {
+          "column": "current",
+          "unit": "A"
+        },
+        "capacity_ah": {
+          "column": "capacity",
+          "unit": "Ah"
+        },
+        "temperature_c": {
+          "column": "temperature",
+          "unit": "degC"
+        },
+        "mode": {
+          "column": "mode"
+        },
+        "end_flag": {
+          "column": "end_flag"
+        }
+      }
+    }
+  ],
+  "features": {
+    "max_gap_s": 120,
+    "min_current_a": 1e-06,
+    "pulse_times_s": [
+      0.1,
+      1,
+      10,
+      30,
+      60
+    ],
+    "min_curve_points": 15,
+    "assume_complete_bidirectional_cycles": false
+  },
+  "diagnostics": {
+    "baseline_window": 3,
+    "min_baseline_cycles": 3,
+    "robust_z_threshold": 4.0
+  },
+  "life": {
+    "cutoff_cycle": 100,
+    "eol_threshold_pct": 80,
+    "eol_consecutive_cycles": 3,
+    "min_early_cycles": 3
+  },
+  "external_features": []
+}
